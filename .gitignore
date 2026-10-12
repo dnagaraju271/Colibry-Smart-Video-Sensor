@@ -46,3 +46,13 @@ tests/box_review_*.png
 # Synthetic compiler smoke-test artifacts
 tests/compiler_smoke/synthetic_model/
 tests/compiler_smoke/dummy_*.nnpa
+
+# Downloaded and demo dataset folders
+dataset/coco128_demo/
+dataset/coco8_demo/
+dataset/processed/
+dataset/coco8/
+dataset/coco128/
+dataset/coco_person_1000/processed/raw_downloads/
+dataset/coco_person_1000/review_excluded/images/
+dataset/coco_person_1000/review_excluded/labels/
