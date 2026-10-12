@@ -61,3 +61,4 @@ dataset/coco_person_1000/review_excluded/labels/
 dataset/coco_person_1000/processed/download_failures.csv
 dataset/coco_person_1000/processed/failures.csv
 tests/compiler_smoke/detector_baseline/
+tests/compiler_smoke/dense_detector_baseline/
