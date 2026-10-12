@@ -1,0 +1,4 @@
+image_id,split,original_person_boxes,current_label_boxes,issue
+000000252203,train,1,,MISSING_IMAGE_OR_LABEL
+000000454637,train,1,0,BOX_COUNT_MISMATCH
+000000198635,train,1,0,BOX_COUNT_MISMATCH

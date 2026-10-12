@@ -1,0 +1,48 @@
+# Python environments and cache
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Dataset images and generated data
+dataset/coco_person_1000/processed/images/
+dataset/coco_person_1000/processed/labels/
+dataset/**/*.zip
+
+# Generated model binaries
+*.tflite
+*.nnpa
+*.h5
+*.keras
+*.onnx
+
+# Generated test outputs
+tests/**/output/
+
+# Downloaded COCO annotations and archives
+dataset/coco2017_annotations/
+
+# Python bytecode and editor/OS files
+**/__pycache__/
+*.pyc
+.DS_Store
+
+# Temporary and backup files
+*.bak
+*.tmp
+
+# Generated visual audit outputs
+tests/coco_person_1000_audit/
+tests/empty_label_audit/contact_sheet_*.jpg
+tests/empty_label_contact_sheet.jpg
+tests/label_preview/
+tests/*_review*.png
+tests/grayscale_test.png
+tests/box_review_*.png
+
+# Synthetic compiler smoke-test artifacts
+tests/compiler_smoke/synthetic_model/
+tests/compiler_smoke/dummy_*.nnpa

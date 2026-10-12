@@ -1,0 +1,4 @@
+image_id,decision,reason
+000000198635,KEEP_EMPTY_LABEL,Food and tableware; no visible person in reviewed original
+000000454637,KEEP_EMPTY_LABEL,Close-up hand and scissors; no visible person instance
+000000252203,EXCLUDE_FROM_ACTIVE_DATASET,Driver is heavily occluded; annotation reliability uncertain
