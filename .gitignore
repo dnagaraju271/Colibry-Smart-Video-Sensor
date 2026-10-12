@@ -60,3 +60,4 @@ dataset/coco_person_1000/review_excluded/labels/
 # Generated dataset failure logs
 dataset/coco_person_1000/processed/download_failures.csv
 dataset/coco_person_1000/processed/failures.csv
+tests/compiler_smoke/detector_baseline/
