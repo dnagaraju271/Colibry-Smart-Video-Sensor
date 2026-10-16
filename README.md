@@ -59,3 +59,23 @@ from version control.
 
 Research and prototyping. This project has not yet demonstrated
 person detection on the physical evaluation board.
+
+## Check a YOLO candidate for Colibry
+
+Use the configuration-driven compatibility inspector to examine a model's
+input/output shapes and operator types before attempting NNPA compilation:
+
+```bash
+python3 scripts/model/check_yolo_colibry_compat.py --list-candidates
+python3 scripts/model/check_yolo_colibry_compat.py --model /path/to/yolov8n.onnx --check-compiler
+```
+
+The model can be selected with `--model` or the `COLIBRY_YOLO_MODEL`
+environment variable; no source-code changes are needed for routine model
+selection. Settings are in `configs/yolo_colibry_check.json`. See
+[`docs/YOLO_COLIBRY_COMPATIBILITY.md`](docs/YOLO_COLIBRY_COMPATIBILITY.md)
+for supported file formats, optional inspection packages, reports, and the
+explicit compiler-run safety gate.
+
+A successful structural inspection does not prove NNPA compatibility or
+physical-board inference. The checker does not flash the board.
