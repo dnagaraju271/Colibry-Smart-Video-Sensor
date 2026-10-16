@@ -278,6 +278,11 @@ def assess_inputs(model_info: dict[str, Any], target: dict[str, Any]) -> list[st
         if not shape or len(shape) != 4:
             warnings.append(f"Input '{item.get('name', 'unnamed')}' is not a known rank-4 image tensor: {shape}.")
             continue
+        if not isinstance(shape[0], int):
+            warnings.append(
+                f"Input '{item.get('name', 'unnamed')}' batch dimension is dynamic/unknown; "
+                "a static batch size may be required for compilation."
+            )
         # Determine standard NCHW/NHWC layouts from the channel dimension.
         layout = item.get("layout", "unknown")
         channels = height = width = None
