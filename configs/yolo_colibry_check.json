@@ -1,0 +1,30 @@
+{
+  "model_path": "",
+  "search_roots": [
+    "models",
+    "hardware/artifacts",
+    "~/person_detector_candidate/model",
+    "/mnt/utm"
+  ],
+  "filename_patterns": [
+    "*yolo*.onnx",
+    "*yolo*.tflite",
+    "*yolo*.pt",
+    "*yolo*.pth",
+    "*yolo*.h5",
+    "*yolo*.keras"
+  ],
+  "target": {
+    "input_width": 160,
+    "input_height": 128,
+    "input_channels": 1,
+    "input_color": "grayscale",
+    "preferred_format": "tflite-int8"
+  },
+  "compiler": {
+    "path": "~/venvs/colibry-compiler/bin/nnpa-compiler",
+    "command": [],
+    "output_dir": "build/yolo_colibry",
+    "timeout_seconds": 300
+  }
+}
