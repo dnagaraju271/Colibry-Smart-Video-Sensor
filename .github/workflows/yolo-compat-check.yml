@@ -1,0 +1,44 @@
+name: YOLO compatibility checker tests
+
+on:
+  push:
+    branches:
+      - main
+      - feat/yolo-colibry-compat-check
+    paths:
+      - "scripts/model/check_yolo_colibry_compat.py"
+      - "configs/yolo_colibry_check.json"
+      - "tests/test_yolo_colibry_compat.py"
+      - ".github/workflows/yolo-compat-check.yml"
+  pull_request:
+    paths:
+      - "scripts/model/check_yolo_colibry_compat.py"
+      - "configs/yolo_colibry_check.json"
+      - "tests/test_yolo_colibry_compat.py"
+      - ".github/workflows/yolo-compat-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python source
+        run: |
+          python -m py_compile scripts/model/check_yolo_colibry_compat.py tests/test_yolo_colibry_compat.py
+
+      - name: Validate JSON configuration
+        run: python -m json.tool configs/yolo_colibry_check.json > /dev/null
+
+      - name: Run dependency-light tests
+        run: python -m unittest discover -s tests -p "test_yolo_colibry_compat.py" -v
