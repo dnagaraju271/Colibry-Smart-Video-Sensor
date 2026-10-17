@@ -326,34 +326,62 @@ def check_compiler(config: dict[str, Any]) -> dict[str, Any]:
 
 def run_compiler(config: dict[str, Any], model: Path) -> dict[str, Any]:
     compiler_cfg = config["compiler"]
-    command_template = compiler_cfg.get("command", [])
-    if not isinstance(command_template, list) or not command_template:
+    compiler_value = str(compiler_cfg.get("path", "nnpa-compiler"))
+    compiler_path = expand_path(compiler_value) if ("/" in compiler_value or compiler_value.startswith("~")) else Path(shutil.which(compiler_value) or compiler_value)
+    if model.suffix.lower() in {".pt", ".pth"}:
         raise ValueError(
-            "Compilation was requested, but compiler.command is empty in the JSON config. "
-            "Verify this SDK version's exact nnpa-compiler invocation before configuring it; "
-            "this tool will not guess compiler flags."
+            "The installed nnpa-compiler CLI accepts TensorFlow, ONNX, and TFLite models, "
+            "not raw .pt/.pth weights. Export the YOLO checkpoint to ONNX first."
         )
-    output_dir = expand_path(compiler_cfg.get("output_dir", "build/yolo_colibry"))
+    command_template = compiler_cfg.get("command") or ["{compiler}", "{model}", "--verbose"]
+    if not isinstance(command_template, list) or not command_template:
+        raise ValueError("compiler.command must be a non-empty list in the JSON config.")
+    output_dir = expand_path(compiler_cfg.get("output_dir", "~/models/colibry_yolo/compiler_test"))
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"{model.stem}.nnpa"
-    replacements = {"{model}": str(model), "{output}": str(output), "{root}": str(ROOT)}
+    replacements = {
+        "{compiler}": str(compiler_path),
+        "{model}": str(model.resolve()),
+        "{output}": str(output),
+        "{root}": str(ROOT),
+    }
     command: list[str] = []
     for token in command_template:
         rendered = str(token)
         for marker, value in replacements.items():
             rendered = rendered.replace(marker, value)
+        if rendered.startswith("~"):
+            rendered = str(expand_path(rendered))
         command.append(rendered)
-    if command and command[0].startswith("~"):
-        command[0] = str(expand_path(command[0]))
     print("Compiler command:", json.dumps(command))
+    before = {path.resolve() for path in output_dir.glob("*.nnpa")}
     result = subprocess.run(
-        command, cwd=ROOT, text=True, capture_output=True,
+        command, cwd=output_dir, text=True, capture_output=True,
         timeout=int(compiler_cfg.get("timeout_seconds", 300)), check=False,
     )
+    log_path = output_dir / f"{model.stem}_compiler.log"
+    log_path.write_text(
+        "COMMAND: " + json.dumps(command) + "\\n"
+        + f"RETURN CODE: {result.returncode}\\n\\nSTDOUT:\\n" + result.stdout
+        + "\\nSTDERR:\\n" + result.stderr,
+        encoding="utf-8",
+    )
+    after = {path.resolve() for path in output_dir.glob("*.nnpa")}
+    created = sorted(str(path) for path in after - before)
+    combined = result.stdout + "\\n" + result.stderr
+    import re
+    unsupported = re.search(r"(?:layer|operator)\\s+([A-Za-z0-9_]+)\\s+is unsupported", combined, re.IGNORECASE)
     return {
-        "command": command, "return_code": result.returncode,
-        "stdout": result.stdout[-12000:], "stderr": result.stderr[-12000:],
-        "expected_output": str(output), "output_exists": output.is_file(),
+        "command": command,
+        "working_directory": str(output_dir),
+        "return_code": result.returncode,
+        "stdout": result.stdout[-12000:],
+        "stderr": result.stderr[-12000:],
+        "log_file": str(log_path),
+        "expected_output": str(output),
+        "output_exists": output.is_file(),
+        "created_nnpa_files": created,
+        "first_unsupported_operator": unsupported.group(1) if unsupported else None,
     }
 
 
@@ -383,6 +411,18 @@ def print_report(report: dict[str, Any]) -> None:
         print("NOTE:", note)
     if report.get("compiler"):
         print("Compiler found:", report["compiler"].get("found"), "|", report["compiler"].get("path"))
+    compiler_run = report.get("compiler_run")
+    if compiler_run:
+        if compiler_run.get("error"):
+            print("Compiler run ERROR:", compiler_run["error"])
+        else:
+            print("Compiler exit status:", compiler_run.get("return_code"))
+            if compiler_run.get("first_unsupported_operator"):
+                print("First unsupported operator:", compiler_run["first_unsupported_operator"])
+            if compiler_run.get("created_nnpa_files"):
+                print("Generated NNPA files:", ", ".join(compiler_run["created_nnpa_files"]))
+            if compiler_run.get("log_file"):
+                print("Compiler log:", compiler_run["log_file"])
     print("FINAL: Compatibility is NOT CONFIRMED until the model is accepted by this NNPA compiler and tested on hardware.")
 
 
@@ -454,7 +494,14 @@ def main(argv: list[str] | None = None) -> int:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
         print("JSON report saved:", report_path)
-    return 0 if inspection.get("inspected") else 3
+    compiler_run = report.get("compiler_run")
+    if args.run_compiler and (
+        not compiler_run or compiler_run.get("error") or compiler_run.get("return_code", 1) != 0
+    ):
+        return 1
+    if inspection.get("inspected") or (compiler_run and compiler_run.get("return_code") == 0):
+        return 0
+    return 3
 
 
 if __name__ == "__main__":
