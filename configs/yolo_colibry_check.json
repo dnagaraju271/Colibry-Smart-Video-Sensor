@@ -23,8 +23,12 @@
   },
   "compiler": {
     "path": "~/venvs/colibry-compiler/bin/nnpa-compiler",
-    "command": [],
-    "output_dir": "build/yolo_colibry",
+    "command": [
+      "{compiler}",
+      "{model}",
+      "--verbose"
+    ],
+    "output_dir": "~/models/colibry_yolo/compiler_test",
     "timeout_seconds": 300
   }
 }
