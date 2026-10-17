@@ -20,6 +20,8 @@ on:
   pull_request:
     paths:
       - "scripts/model/check_yolo_colibry_compat.py"
+      - "scripts/model/visualize_colibry_person_detections.py"
+      - "tests/test_colibry_person_visualization_contract.py"
       - "scripts/model/train_colibry_person_detector.py"
       - "tests/test_colibry_person_training_contract.py"
       - "docs/COLIBRY_PERSON_TRAINING.md"
