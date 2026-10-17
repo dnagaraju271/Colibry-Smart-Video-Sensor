@@ -59,6 +59,14 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
         )
         self.assertNotIn("pos_loss + 1.5 * hard_neg_loss", SOURCE)
 
+    def test_saved_weights_can_be_evaluated_without_retraining(self) -> None:
+        self.assertIn('"--evaluate-weights"', SOURCE)
+        self.assertIn("model.load_weights(str(args.evaluate_weights))", SOURCE)
+
+    def test_native_keras_save_does_not_pass_unsupported_optimizer_argument(self) -> None:
+        self.assertIn('model.save(str(args.output_dir / "colibry_person_detector.keras"))', SOURCE)
+        self.assertNotIn("include_optimizer=False", SOURCE)
+
     def test_known_empty_images_are_not_given_teacher_pseudo_labels(self) -> None:
         self.assertIn("if teacher_record is None or not boxes:", SOURCE)
         self.assertIn('"pseudo_labels_in_known_empty_images": 0', SOURCE)
