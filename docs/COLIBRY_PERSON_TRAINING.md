@@ -59,7 +59,13 @@ Check the printed contract before training:
 
 After the validation check passes, run the same command without `--check-only`.
 Optional flags include `--epochs`, `--batch-size`, `--learning-rate`,
+`--negative-loss-weight`, `--channels`, `--residual-blocks`,
 `--min-person-height-px`, `--pseudo-confidence`, and `--output-dir`.
+The default backbone uses 24 feature channels and 6 residual blocks (the original
+compact variant). Larger `--channels` or changed block counts produce a different
+weight shape; do not load a checkpoint across architecture settings. Test variants
+with the same validation protocol and retain the smallest one that demonstrates
+a credible precision/recall trade-off.
 
 For example:
 
