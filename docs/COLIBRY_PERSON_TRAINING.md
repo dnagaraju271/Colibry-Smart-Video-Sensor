@@ -72,11 +72,13 @@ python scripts/model/train_colibry_person_detector.py \
   --output-dir runs/colibry_person_detector
 ```
 
-The objectness loss averages positive-image loss separately from per-image
-hard-negative loss. This is meant to avoid letting the proportion of empty
-images drive the trivial near-constant-confidence solution seen in the prior
-experiment. The residual model and revised loss are experimental; the change
-does not guarantee improved accuracy.
+The objectness loss averages positive-image loss separately, then combines
+per-image dense background loss with hard-negative mining. Dense background loss
+penalizes every background grid cell; hard-negative mining adds focus to the
+most confusing background locations. This change was introduced after validation
+showed widespread false detections with the hard-negative-only loss. The residual
+model and revised loss are experimental; the change does not guarantee improved
+accuracy and must be evaluated on the validation split before deployment.
 
 The run writes the best weights, final weights, Keras model, epoch history, and
 `training_report.json` to the output directory. The report uses a greedy
