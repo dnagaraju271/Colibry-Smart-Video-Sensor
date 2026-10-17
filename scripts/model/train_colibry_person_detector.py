@@ -475,7 +475,15 @@ def main() -> None:
     parser.add_argument("--min-person-height-px", type=int, default=24)
     parser.add_argument("--pseudo-confidence", type=float, default=0.35)
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument(
+        "--evaluate-weights", type=Path, default=None,
+        help="Load this existing .weights.h5 checkpoint, skip training, and run validation/export.",
+    )
     args = parser.parse_args()
+    if args.evaluate_weights is not None:
+        args.evaluate_weights = args.evaluate_weights.expanduser().resolve()
+        if not args.evaluate_weights.is_file():
+            parser.error(f"weights file not found: {args.evaluate_weights}")
 
     if args.epochs < 1 or args.batch_size < 1 or args.learning_rate <= 0:
         parser.error("epochs and batch-size must be positive, as must learning-rate")
@@ -546,32 +554,36 @@ def main() -> None:
         loss=hard_negative_giou_detection_loss,
     )
     best_weights = args.output_dir / "best.weights.h5"
-    callbacks = [
-        keras.callbacks.ModelCheckpoint(
-            str(best_weights), monitor="val_loss",
-            save_best_only=True, save_weights_only=True, verbose=1,
-        ),
-        keras.callbacks.EarlyStopping(
-            monitor="val_loss", patience=8, restore_best_weights=True, verbose=1,
-        ),
-        keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6, verbose=1,
-        ),
-        keras.callbacks.CSVLogger(str(args.output_dir / "training_history.csv")),
-    ]
-    model.fit(
-        x_train, y_train,
-        validation_data=(x_val, y_val),
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        shuffle=True,
-        callbacks=callbacks,
-        verbose=2,
-    )
-    if best_weights.exists():
-        model.load_weights(str(best_weights))
+    if args.evaluate_weights is not None:
+        model.load_weights(str(args.evaluate_weights))
+        print("Loaded existing weights without retraining:", args.evaluate_weights)
+    else:
+        callbacks = [
+            keras.callbacks.ModelCheckpoint(
+                str(best_weights), monitor="val_loss",
+                save_best_only=True, save_weights_only=True, verbose=1,
+            ),
+            keras.callbacks.EarlyStopping(
+                monitor="val_loss", patience=8, restore_best_weights=True, verbose=1,
+            ),
+            keras.callbacks.ReduceLROnPlateau(
+                monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6, verbose=1,
+            ),
+            keras.callbacks.CSVLogger(str(args.output_dir / "training_history.csv")),
+        ]
+        model.fit(
+            x_train, y_train,
+            validation_data=(x_val, y_val),
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            shuffle=True,
+            callbacks=callbacks,
+            verbose=2,
+        )
+        if best_weights.exists():
+            model.load_weights(str(best_weights))
     model.save_weights(str(args.output_dir / "final.weights.h5"))
-    model.save(str(args.output_dir / "colibry_person_detector.keras"), include_optimizer=False)
+    model.save(str(args.output_dir / "colibry_person_detector.keras"))
 
     raw = model.predict(x_val, batch_size=args.batch_size, verbose=1)
     decoded = [decode_predictions(item) for item in raw]
