@@ -82,6 +82,12 @@ input/output shapes and operator types before attempting NNPA compilation:
 ```bash
 python3 scripts/model/check_yolo_colibry_compat.py --list-candidates
 python3 scripts/model/check_yolo_colibry_compat.py --model /path/to/yolov8n.onnx --check-compiler
+
+# Run the compiler check too; the log and artifacts go outside the repository.
+python3 scripts/model/check_yolo_colibry_compat.py \
+  --model /path/to/yolov8n.onnx \
+  --run-compiler \
+  --json-report "$HOME/models/colibry_yolo/compiler_test/yolov8n_report.json"
 ```
 
 The model can be selected with `--model` or the `COLIBRY_YOLO_MODEL`
