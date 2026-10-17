@@ -104,6 +104,18 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
         tf.maximum(tf.reduce_sum(positive_image_mask), 1.0)
     )
 
+    # Penalize all background cells as well as the most difficult ones.
+    # Hard-negative-only mining leaves most of the 1,280 cells without direct
+    # objectness gradient on a given image. The dense term teaches global background
+    # calibration; the hard term focuses extra weight on confusing locations.
+    background_mask = 1.0 - obj
+    background_count = tf.reduce_sum(background_mask, axis=[1, 2])
+    all_background_per_image = (
+        tf.reduce_sum(bce * background_mask, axis=[1, 2]) /
+        tf.maximum(background_count, 1.0)
+    )
+    all_background_loss = tf.reduce_mean(all_background_per_image)
+
     def hard_negatives_for_image(inputs: tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
         image_bce, image_obj = inputs
         losses = tf.boolean_mask(
@@ -120,12 +132,13 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
 
         return tf.cond(n > 0, calculate, lambda: tf.constant(0.0, tf.float32))
 
-    negative_loss_per_image = tf.map_fn(
+    hard_negative_per_image = tf.map_fn(
         hard_negatives_for_image,
         (bce, obj),
         fn_output_signature=tf.float32,
     )
-    negative_loss = tf.reduce_mean(negative_loss_per_image)
+    hard_negative_loss = tf.reduce_mean(hard_negative_per_image)
+    negative_loss = 0.5 * all_background_loss + 0.5 * hard_negative_loss
     objectness_loss = pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss
 
     true_v = y_true[..., 1:5]
@@ -536,7 +549,7 @@ def main() -> None:
         "loss": {
             "name": "hard_negative_giou_detection_loss",
             "negative_loss_weight": NEGATIVE_LOSS_WEIGHT,
-            "design": "positive-image and hard-negative image losses are averaged separately",
+            "design": "positive objectness is balanced separately from a per-image background loss combining all negative cells and hard-negative mining",
         },
         "training": train_summary,
         "validation": val_summary,
