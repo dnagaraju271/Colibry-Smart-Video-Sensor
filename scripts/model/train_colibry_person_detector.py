@@ -430,6 +430,52 @@ def decode_predictions(raw: np.ndarray, score_floor: float = 0.01) -> list[tuple
     return [(boxes[index], float(scores[index])) for index in selected]
 
 
+def summarize_objectness_scores(
+    raw_predictions: np.ndarray,
+    targets: np.ndarray,
+    thresholds: list[float],
+) -> dict[str, Any]:
+    """Summarize whether the objectness head separates target cells from background."""
+    probabilities = 1.0 / (
+        1.0 + np.exp(-np.clip(raw_predictions[..., 0], -30.0, 30.0))
+    )
+    positive_mask = targets[..., 0] >= 0.5
+    background_mask = ~positive_mask
+
+    def describe(values: np.ndarray) -> dict[str, Any]:
+        if values.size == 0:
+            return {"count": 0}
+        return {
+            "count": int(values.size),
+            "mean": float(np.mean(values)),
+            "median": float(np.median(values)),
+            "p90": float(np.percentile(values, 90)),
+            "p95": float(np.percentile(values, 95)),
+            "p99": float(np.percentile(values, 99)),
+            "max": float(np.max(values)),
+            "fraction_at_or_above_threshold": {
+                f"{threshold:.2f}": float(np.mean(values >= threshold))
+                for threshold in thresholds
+            },
+        }
+
+    positive_scores = probabilities[positive_mask]
+    background_scores = probabilities[background_mask]
+    return {
+        "note": (
+            "Scores are sigmoid objectness probabilities at target grid cells: "
+            "positive means a validation ground-truth center cell; background means "
+            "all other grid cells. This diagnoses score separation and is not a detection metric."
+        ),
+        "positive_target_cells": describe(positive_scores),
+        "background_cells": describe(background_scores),
+        "positive_minus_background_mean": (
+            float(np.mean(positive_scores) - np.mean(background_scores))
+            if positive_scores.size and background_scores.size else None
+        ),
+    }
+
+
 def evaluate_predictions(
     predictions: list[list[tuple[np.ndarray, float]]],
     ground_truth: list[np.ndarray],
@@ -618,6 +664,9 @@ def main() -> None:
 
     raw = model.predict(x_val, batch_size=args.batch_size, verbose=1)
     decoded = [decode_predictions(item) for item in raw]
+    report["objectness_score_diagnostics"] = summarize_objectness_scores(
+        raw, y_val, eval_thresholds
+    )
     report["validation_metrics"] = {
         "metric_note": (
             "Greedy one-to-one matching at IoU >= 0.50 after NMS IoU 0.50. "
