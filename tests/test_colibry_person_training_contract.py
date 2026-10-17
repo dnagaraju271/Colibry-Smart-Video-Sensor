@@ -69,6 +69,11 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
         self.assertIn('"--evaluate-weights"', SOURCE)
         self.assertIn("model.load_weights(str(args.evaluate_weights))", SOURCE)
 
+    def test_validation_supports_multiple_confidence_thresholds(self) -> None:
+        self.assertIn('"--eval-confidence-thresholds"', SOURCE)
+        self.assertIn("for threshold in eval_thresholds", SOURCE)
+        self.assertIn('"average_predictions_per_image"', SOURCE)
+
     def test_native_keras_save_does_not_pass_unsupported_optimizer_argument(self) -> None:
         self.assertIn('model.save(str(args.output_dir / "colibry_person_detector.keras"))', SOURCE)
         self.assertNotIn("include_optimizer=False", SOURCE)
