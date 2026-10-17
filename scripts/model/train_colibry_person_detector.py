@@ -30,14 +30,17 @@ NEGATIVE_LOSS_WEIGHT = 1.0
 GIOU_WEIGHT = 1.0
 
 
-def build_model() -> keras.Model:
-    """Build a small residual grid detector using simple Conv/ReLU/Add ops."""
+def build_model(channels: int = 24, residual_blocks: int = 6) -> keras.Model:
+    """Build a configurable depthwise-residual grid detector using simple Conv/ReLU/Add ops."""
+    if channels < 8 or residual_blocks < 1:
+        raise ValueError("channels must be >= 8 and residual_blocks must be >= 1")
+    stem_channels = max(8, channels // 3)
     inputs = keras.Input(
         shape=(IMAGE_HEIGHT, IMAGE_WIDTH, INPUT_CHANNELS),
         name="grayscale_input",
     )
     x = keras.layers.Conv2D(
-        8, 3, strides=2, padding="same", activation="relu",
+        stem_channels, 3, strides=2, padding="same", activation="relu",
         kernel_initializer="he_normal", bias_initializer="zeros",
         name="stem_conv",
     )(inputs)
@@ -47,13 +50,13 @@ def build_model() -> keras.Model:
         name="downsample_depthwise",
     )(x)
     x = keras.layers.Conv2D(
-        24, 1, padding="same", activation="relu",
+        channels, 1, padding="same", activation="relu",
         kernel_initializer="he_normal", bias_initializer="zeros",
         name="pointwise_1",
     )(x)
 
     # Identity shortcuts help preserve image-dependent features in deeper layers.
-    for block in range(1, 7):
+    for block in range(1, residual_blocks + 1):
         shortcut = x
         y = keras.layers.DepthwiseConv2D(
             3, padding="same", activation="relu",
@@ -61,7 +64,7 @@ def build_model() -> keras.Model:
             name=f"depthwise_{block}",
         )(x)
         y = keras.layers.Conv2D(
-            24, 1, padding="same", activation="linear",
+            channels, 1, padding="same", activation="linear",
             kernel_initializer=keras.initializers.RandomNormal(stddev=0.02),
             bias_initializer="zeros",
             name=f"pointwise_{block + 1}_residual",
@@ -75,7 +78,9 @@ def build_model() -> keras.Model:
         bias_initializer="zeros", name="grid_predictions",
     )(x)
 
-    model = keras.Model(inputs, outputs, name="colibry_residual_person_detector")
+    model = keras.Model(
+        inputs, outputs, name=f"colibry_residual_person_detector_c{channels}_b{residual_blocks}"
+    )
     kernel, bias = model.get_layer("grid_predictions").get_weights()
     bias[0] = -2.0
     model.get_layer("grid_predictions").set_weights([kernel, bias])
@@ -534,8 +539,16 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument(
-        "--negative-loss-weight", type=float, default=4.0,
-        help="Multiplier for the combined dense-background and hard-negative objectness loss (experimental default: 4.0).",
+        "--negative-loss-weight", type=float, default=1.0,
+        help="Multiplier for the combined dense-background and hard-negative objectness loss (default: 1.0).",
+    )
+    parser.add_argument(
+        "--channels", type=int, default=24,
+        help="Feature channels in the residual backbone; default 24 preserves the original 5,541-parameter layout.",
+    )
+    parser.add_argument(
+        "--residual-blocks", type=int, default=6,
+        help="Number of depthwise-residual blocks; default 6 preserves the original checkpoint layout.",
     )
     parser.add_argument("--min-person-height-px", type=int, default=24)
     parser.add_argument("--pseudo-confidence", type=float, default=0.35)
@@ -558,6 +571,8 @@ def main() -> None:
         parser.error("epochs and batch-size must be positive, as must learning-rate")
     if args.negative_loss_weight <= 0:
         parser.error("negative-loss-weight must be positive")
+    if args.channels < 8 or args.residual_blocks < 1:
+        parser.error("channels must be >= 8 and residual-blocks must be >= 1")
     if not 0.0 <= args.pseudo_confidence <= 1.0:
         parser.error("pseudo-confidence must be between 0 and 1")
     try:
@@ -598,7 +613,7 @@ def main() -> None:
     if x_val.shape[1:] != (IMAGE_HEIGHT, IMAGE_WIDTH, INPUT_CHANNELS):
         raise ValueError(f"Invalid validation image shape: {x_val.shape}")
 
-    model = build_model()
+    model = build_model(channels=args.channels, residual_blocks=args.residual_blocks)
     expected_output = (None, GRID_ROWS, GRID_COLS, VALUES_PER_CELL)
     if model.output_shape != expected_output:
         raise ValueError(f"Model output {model.output_shape} != {expected_output}")
@@ -617,6 +632,11 @@ def main() -> None:
             "values_per_cell": VALUES_PER_CELL,
         },
         "model_parameters": model.count_params(),
+        "model_architecture": {
+            "channels": args.channels,
+            "residual_blocks": args.residual_blocks,
+            "stem_channels": max(8, args.channels // 3),
+        },
         "loss": {
             "name": "hard_negative_giou_detection_loss",
             "negative_loss_weight": NEGATIVE_LOSS_WEIGHT,
