@@ -26,6 +26,7 @@ GRID_COLS = 40
 GRID_ROWS = 32
 VALUES_PER_CELL = 5  # objectness, x offset, y offset, width, height
 MIN_PERSON_HEIGHT_PX = 24
+POSITIVE_LOSS_WEIGHT = 2.0
 NEGATIVE_LOSS_WEIGHT = 1.0
 GIOU_WEIGHT = 1.0
 
@@ -144,7 +145,7 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
     )
     hard_negative_loss = tf.reduce_mean(hard_negative_per_image)
     negative_loss = 0.5 * all_background_loss + 0.5 * hard_negative_loss
-    objectness_loss = pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss
+    objectness_loss = POSITIVE_LOSS_WEIGHT * pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss
 
     true_v = y_true[..., 1:5]
     pred_v = tf.sigmoid(y_pred[..., 1:5])
@@ -614,6 +615,10 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument(
+        "--positive-loss-weight", type=float, default=2.0,
+        help="Multiplier for positive-cell objectness loss (experimental default: 2.0).",
+    )
+    parser.add_argument(
         "--negative-loss-weight", type=float, default=1.0,
         help="Multiplier for the combined dense-background and hard-negative objectness loss (default: 1.0).",
     )
@@ -656,6 +661,8 @@ def main() -> None:
 
     if args.epochs < 1 or args.batch_size < 1 or args.learning_rate <= 0:
         parser.error("epochs and batch-size must be positive, as must learning-rate")
+    if args.positive_loss_weight <= 0:
+        parser.error("positive-loss-weight must be positive")
     if args.negative_loss_weight <= 0:
         parser.error("negative-loss-weight must be positive")
     if args.channels < 8 or args.residual_blocks < 1:
@@ -679,8 +686,9 @@ def main() -> None:
     if len(set(eval_thresholds)) != len(eval_thresholds):
         parser.error("eval-confidence-thresholds must not contain duplicates")
 
-    global MIN_PERSON_HEIGHT_PX, NEGATIVE_LOSS_WEIGHT
+    global MIN_PERSON_HEIGHT_PX, POSITIVE_LOSS_WEIGHT, NEGATIVE_LOSS_WEIGHT
     MIN_PERSON_HEIGHT_PX = args.min_person_height_px
+    POSITIVE_LOSS_WEIGHT = args.positive_loss_weight
     NEGATIVE_LOSS_WEIGHT = args.negative_loss_weight
     args.dataset = args.dataset.expanduser().resolve()
     args.output_dir = args.output_dir.expanduser().resolve()
@@ -730,6 +738,7 @@ def main() -> None:
         },
         "loss": {
             "name": "hard_negative_giou_detection_loss",
+            "positive_loss_weight": POSITIVE_LOSS_WEIGHT,
             "negative_loss_weight": NEGATIVE_LOSS_WEIGHT,
             "design": "positive objectness is balanced separately from a per-image background loss combining all negative cells and hard-negative mining",
         },
