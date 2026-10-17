@@ -317,6 +317,7 @@ def load_split(
     split: str,
     teacher_cache: dict[str, dict[str, Any]] | None = None,
     add_pseudo_labels: bool = False,
+    pseudo_confidence: float = 0.35,
 ) -> tuple[np.ndarray, np.ndarray, list[np.ndarray], dict[str, Any]]:
     image_dir = dataset / "images" / split
     label_dir = dataset / "labels" / split
@@ -357,7 +358,11 @@ def load_split(
 
         gt_boxes, gt_xyxy = read_ground_truth(label_map[image_id])
         teacher = cache.get(image_id) if add_pseudo_labels else None
-        target, _xyxy, stats = encode_targets(label_map[image_id], teacher)
+        target, _xyxy, stats = encode_targets(
+            label_map[image_id],
+            teacher,
+            pseudo_confidence=pseudo_confidence,
+        )
         images.append(pixels[..., None].astype(np.float32) / 255.0)
         targets.append(target)
         gt_by_image.append(np.asarray(gt_xyxy, dtype=np.float32).reshape(-1, 4))
@@ -488,7 +493,9 @@ def main() -> None:
         print(f"Using YOLO teacher confidence threshold: {args.pseudo_confidence:.2f}")
 
     x_train, y_train, _train_gt, train_summary = load_split(
-        args.dataset, "train", teacher_train, add_pseudo_labels=bool(teacher_train)
+        args.dataset, "train", teacher_train,
+        add_pseudo_labels=bool(teacher_train),
+        pseudo_confidence=args.pseudo_confidence,
     )
     x_val, y_val, val_gt, val_summary = load_split(args.dataset, "val")
 
