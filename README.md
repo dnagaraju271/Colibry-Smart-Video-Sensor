@@ -60,6 +60,20 @@ from version control.
 Research and prototyping. This project has not yet demonstrated
 person detection on the physical evaluation board.
 
+## Train the compact Colibry person detector
+
+The training entry point targets **160 pixels wide × 128 pixels high** in
+grayscale. TensorFlow uses channels-last shape `(N, 128, 160, 1)`; this is the
+same image size, with height listed before width. The training architecture is a
+compact hardware-oriented grid detector, not the original YOLOv8 graph. Cached
+YOLOv8 detections can optionally supplement labels on images already annotated
+with people; known-empty images remain negative.
+
+Review [the person detector training guide](docs/COLIBRY_PERSON_TRAINING.md)
+for dataset format, the pre-training validation command, model outputs, and the
+limits of the validation metrics. Dataset images, teacher caches, and generated
+weights remain outside Git history.
+
 ## Check a YOLO candidate for Colibry
 
 Use the configuration-driven compatibility inspector to examine a model's

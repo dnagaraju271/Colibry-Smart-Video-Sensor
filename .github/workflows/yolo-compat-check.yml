@@ -5,14 +5,23 @@ on:
     branches:
       - main
       - feat/yolo-colibry-compat-check
+      - feat/colibry-person-training-pipeline
     paths:
       - "scripts/model/check_yolo_colibry_compat.py"
+      - "scripts/model/train_colibry_person_detector.py"
+      - "tests/test_colibry_person_training_contract.py"
+      - "docs/COLIBRY_PERSON_TRAINING.md"
+      - "README.md"
       - "configs/yolo_colibry_check.json"
       - "tests/test_yolo_colibry_compat.py"
       - ".github/workflows/yolo-compat-check.yml"
   pull_request:
     paths:
       - "scripts/model/check_yolo_colibry_compat.py"
+      - "scripts/model/train_colibry_person_detector.py"
+      - "tests/test_colibry_person_training_contract.py"
+      - "docs/COLIBRY_PERSON_TRAINING.md"
+      - "README.md"
       - "configs/yolo_colibry_check.json"
       - "tests/test_yolo_colibry_compat.py"
       - ".github/workflows/yolo-compat-check.yml"
@@ -35,10 +44,13 @@ jobs:
 
       - name: Compile Python source
         run: |
-          python -m py_compile scripts/model/check_yolo_colibry_compat.py tests/test_yolo_colibry_compat.py
+          python -m py_compile scripts/model/check_yolo_colibry_compat.py scripts/model/train_colibry_person_detector.py tests/test_yolo_colibry_compat.py tests/test_colibry_person_training_contract.py
 
       - name: Validate JSON configuration
         run: python -m json.tool configs/yolo_colibry_check.json > /dev/null
 
-      - name: Run dependency-light tests
+      - name: Run dependency-light compatibility tests
         run: python -m unittest discover -s tests -p "test_yolo_colibry_compat.py" -v
+
+      - name: Run person-training contract tests
+        run: python -m unittest discover -s tests -p "test_colibry_person_training_contract.py" -v
