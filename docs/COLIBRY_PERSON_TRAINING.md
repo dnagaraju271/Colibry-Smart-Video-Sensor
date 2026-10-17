@@ -59,8 +59,15 @@ Check the printed contract before training:
 
 After the validation check passes, run the same command without `--check-only`.
 Optional flags include `--epochs`, `--batch-size`, `--learning-rate`,
-`--negative-loss-weight`, `--channels`, `--residual-blocks`,
-`--min-person-height-px`, `--pseudo-confidence`, and `--output-dir`.
+`--positive-loss-weight`, `--negative-loss-weight`, `--channels`,
+`--residual-blocks`, `--min-person-height-px`, `--pseudo-confidence`,
+and `--output-dir`.
+
+The positive-cell objectness loss multiplier is controlled by
+`--positive-loss-weight` (experimental default: `2.0`); the combined dense
+background/hard-negative term is controlled by `--negative-loss-weight`
+(default: `1.0`). These values affect objectness gradients only. Evaluate
+precision, recall and empty-image false detections before accepting a new setting.
 The default backbone uses 24 feature channels and 6 residual blocks (the original
 compact variant). Larger `--channels` or changed block counts produce a different
 weight shape; do not load a checkpoint across architecture settings. Test variants
