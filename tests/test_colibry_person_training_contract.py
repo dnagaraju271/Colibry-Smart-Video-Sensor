@@ -80,7 +80,7 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
             SOURCE,
         )
         self.assertIn(
-            "objectness_loss = pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss",
+            "objectness_loss = POSITIVE_LOSS_WEIGHT * pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss",
             SOURCE,
         )
         self.assertNotIn("pos_loss + 1.5 * hard_neg_loss", SOURCE)
