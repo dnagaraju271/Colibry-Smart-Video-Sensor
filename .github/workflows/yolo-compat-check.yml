@@ -9,6 +9,8 @@ on:
     paths:
       - "scripts/model/check_yolo_colibry_compat.py"
       - "scripts/model/train_colibry_person_detector.py"
+      - "scripts/model/visualize_colibry_person_detections.py"
+      - "tests/test_colibry_person_visualization_contract.py"
       - "tests/test_colibry_person_training_contract.py"
       - "docs/COLIBRY_PERSON_TRAINING.md"
       - "README.md"
@@ -44,7 +46,7 @@ jobs:
 
       - name: Compile Python source
         run: |
-          python -m py_compile scripts/model/check_yolo_colibry_compat.py scripts/model/train_colibry_person_detector.py tests/test_yolo_colibry_compat.py tests/test_colibry_person_training_contract.py
+          python -m py_compile scripts/model/check_yolo_colibry_compat.py scripts/model/train_colibry_person_detector.py scripts/model/visualize_colibry_person_detections.py tests/test_yolo_colibry_compat.py tests/test_colibry_person_training_contract.py tests/test_colibry_person_visualization_contract.py
 
       - name: Validate JSON configuration
         run: python -m json.tool configs/yolo_colibry_check.json > /dev/null
@@ -54,3 +56,6 @@ jobs:
 
       - name: Run person-training contract tests
         run: python -m unittest discover -s tests -p "test_colibry_person_training_contract.py" -v
+
+      - name: Run person-visualization contract tests
+        run: python -m unittest discover -s tests -p "test_colibry_person_visualization_contract.py" -v
