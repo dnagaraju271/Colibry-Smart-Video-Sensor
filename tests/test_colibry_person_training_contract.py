@@ -49,6 +49,11 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
             SOURCE,
         )
 
+    def test_negative_loss_weight_is_configurable(self) -> None:
+        self.assertIn('"--negative-loss-weight"', SOURCE)
+        self.assertIn("NEGATIVE_LOSS_WEIGHT = args.negative_loss_weight", SOURCE)
+        self.assertIn('"negative_loss_weight": NEGATIVE_LOSS_WEIGHT', SOURCE)
+
     def test_loss_balances_positive_dense_background_and_hard_negative_terms(self) -> None:
         self.assertIn("pos_loss_per_image", SOURCE)
         self.assertIn("positive_image_mask", SOURCE)
