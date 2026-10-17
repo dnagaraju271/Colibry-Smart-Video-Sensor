@@ -680,6 +680,8 @@ def main() -> None:
     }
     report_path = args.output_dir / "training_report.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print("\n=== OBJECTNESS SCORE DIAGNOSTICS ===")
+    print(json.dumps(report["objectness_score_diagnostics"], indent=2))
     print("\n=== VALIDATION METRICS ===")
     print(json.dumps(report["validation_metrics"], indent=2))
     print("Saved model:", args.output_dir / "colibry_person_detector.keras")
