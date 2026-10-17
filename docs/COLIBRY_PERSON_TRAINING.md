@@ -52,8 +52,8 @@ Check the printed contract before training:
 - Keras input: `(N, 128, 160, 1)` (height, width, channel order).
 - Image dimensions: **160 wide × 128 high**.
 - Model grid output: `(N, 32, 40, 5)`.
-- Training targets: `(N, 32, 40, 6)`; channel 6 is a target-only background eligibility mask.
-- Background loss ignores cells whose centers fall inside a ground-truth or accepted teacher box.
+- Training targets: `(N, 32, 40, 8)`; the extra channels carry positive-loss weights, background eligibility, and box-regression weights.
+- Only assigned ground-truth/teacher centre cells are excluded from the background loss; every other cell is trained as background. This matches the decoder, where each grid cell predicts a box centered on that cell.
 - Known-empty image count and pseudo-label count.
 - Ground-truth/label alignment and all image dimensions.
 
@@ -61,20 +61,21 @@ Check the printed contract before training:
 
 After the validation check passes, run the same command without `--check-only`.
 Optional flags include `--epochs`, `--batch-size`, `--learning-rate`,
-`--positive-loss-weight`, `--negative-loss-weight`, `--channels`,
-`--residual-blocks`, `--min-person-height-px`, `--pseudo-confidence`,
-and `--output-dir`.
+`--positive-loss-weight`, `--negative-loss-weight`, `--teacher-box-weight`,
+`--channels`, `--residual-blocks`, `--min-person-height-px`,
+`--pseudo-confidence`, and `--output-dir`.
 
 The positive-cell objectness loss multiplier is controlled by
 `--positive-loss-weight` (experimental default: `2.0`); the combined dense
 background/hard-negative term is controlled by `--negative-loss-weight`
-(default: `1.0`). These values affect objectness gradients only. Evaluate
-precision, recall and empty-image false detections before accepting a new setting.
-The default backbone uses 24 feature channels and 6 residual blocks (the original
-compact variant). Larger `--channels` or changed block counts produce a different
-weight shape; do not load a checkpoint across architecture settings. Test variants
-with the same validation protocol and retain the smallest one that demonstrates
-a credible precision/recall trade-off.
+(default: `1.0`). Accepted teacher-only boxes use soft objectness labels from
+the teacher's confidence scores and a reduced box-regression weight configured by
+`--teacher-box-weight` (default: `0.25`). Ground-truth boxes remain authoritative;
+teacher-only pseudo labels are never added to known-empty images or when they
+overlap ground truth above the exclusion threshold. These mechanisms are
+experimental and must be validated. The default backbone uses 24 feature channels
+and 6 residual blocks; larger `--channels` or changed block counts produce a
+different weight shape, so do not load checkpoints across architectures.
 
 For example:
 
@@ -87,15 +88,16 @@ python scripts/model/train_colibry_person_detector.py \
   --output-dir runs/colibry_person_detector
 ```
 
-The objectness loss averages positive-cell loss separately, then combines
-per-image dense background loss with hard-negative mining. Background loss is
-applied only to grid cells outside known ground-truth and accepted teacher boxes;
-cells inside those boxes but away from the assigned center are ignored for
-background loss to avoid contradictory supervision. The positive-cell multiplier
-is controlled by `--positive-loss-weight` (experimental default: `2.0`), while the
-combined negative term is controlled by `--negative-loss-weight` (default: `1.0`).
-These settings and the box-aware mask are experimental. They do not guarantee
-improved accuracy and must be evaluated on the validation split before deployment.
+The objectness loss averages weighted positive-cell loss separately,
+then combines dense per-image background loss with hard-negative mining. Every
+unassigned grid cell contributes to background loss; only cells assigned a GT or
+accepted teacher target are excluded. This is intentional because the detector
+predicts one cell-centred box per grid cell. Teacher-only cells use the cached
+teacher confidence as a soft objectness target and a reduced box weight, rather
+than treating every teacher box as a hard ground-truth label. These distillation
+changes are experimental and do not guarantee improved accuracy. Compare
+precision, recall, false positives, and empty-image detections against the YOLO
+teacher before considering deployment.
 
 The run writes the best weights, final weights, Keras model, epoch history, and
 `training_report.json` to the output directory. The report uses a greedy
