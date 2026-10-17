@@ -51,7 +51,9 @@ Check the printed contract before training:
 
 - Keras input: `(N, 128, 160, 1)` (height, width, channel order).
 - Image dimensions: **160 wide × 128 high**.
-- Grid output: `(N, 32, 40, 5)`.
+- Model grid output: `(N, 32, 40, 5)`.
+- Training targets: `(N, 32, 40, 6)`; channel 6 is a target-only background eligibility mask.
+- Background loss ignores cells whose centers fall inside a ground-truth or accepted teacher box.
 - Known-empty image count and pseudo-label count.
 - Ground-truth/label alignment and all image dimensions.
 
@@ -85,16 +87,15 @@ python scripts/model/train_colibry_person_detector.py \
   --output-dir runs/colibry_person_detector
 ```
 
-The objectness loss averages positive-image loss separately, then combines
-per-image dense background loss with hard-negative mining. Dense background loss
-penalizes every background grid cell; hard-negative mining adds focus to the
-most confusing background locations. The combined negative term is controlled by
-`--negative-loss-weight` (experimental default: `4.0`); increase or decrease it
-only through a measured experiment. This weighting was made configurable after
-validation showed positive and background confidence scores clustering near 0.5.
-The residual model and revised loss are experimental; this setting does not
-guarantee improved accuracy and must be evaluated on the validation split before
-deployment.
+The objectness loss averages positive-cell loss separately, then combines
+per-image dense background loss with hard-negative mining. Background loss is
+applied only to grid cells outside known ground-truth and accepted teacher boxes;
+cells inside those boxes but away from the assigned center are ignored for
+background loss to avoid contradictory supervision. The positive-cell multiplier
+is controlled by `--positive-loss-weight` (experimental default: `2.0`), while the
+combined negative term is controlled by `--negative-loss-weight` (default: `1.0`).
+These settings and the box-aware mask are experimental. They do not guarantee
+improved accuracy and must be evaluated on the validation split before deployment.
 
 The run writes the best weights, final weights, Keras model, epoch history, and
 `training_report.json` to the output directory. The report uses a greedy
