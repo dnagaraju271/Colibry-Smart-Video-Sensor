@@ -49,10 +49,16 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
             SOURCE,
         )
 
-    def test_loss_normalizes_positive_and_negative_image_terms_separately(self) -> None:
+    def test_loss_balances_positive_dense_background_and_hard_negative_terms(self) -> None:
         self.assertIn("pos_loss_per_image", SOURCE)
         self.assertIn("positive_image_mask", SOURCE)
-        self.assertIn("negative_loss = tf.reduce_mean(negative_loss_per_image)", SOURCE)
+        self.assertIn("all_background_per_image", SOURCE)
+        self.assertIn("all_background_loss = tf.reduce_mean(all_background_per_image)", SOURCE)
+        self.assertIn("hard_negative_loss = tf.reduce_mean(hard_negative_per_image)", SOURCE)
+        self.assertIn(
+            "negative_loss = 0.5 * all_background_loss + 0.5 * hard_negative_loss",
+            SOURCE,
+        )
         self.assertIn(
             "objectness_loss = pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss",
             SOURCE,
