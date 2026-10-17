@@ -74,6 +74,12 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
         self.assertIn("for threshold in eval_thresholds", SOURCE)
         self.assertIn('"average_predictions_per_image"', SOURCE)
 
+    def test_validation_reports_positive_and_background_objectness_scores(self) -> None:
+        self.assertIn("def summarize_objectness_scores(", SOURCE)
+        self.assertIn('"positive_target_cells"', SOURCE)
+        self.assertIn('"background_cells"', SOURCE)
+        self.assertIn('"objectness_score_diagnostics"', SOURCE)
+
     def test_native_keras_save_does_not_pass_unsupported_optimizer_argument(self) -> None:
         self.assertIn('model.save(str(args.output_dir / "colibry_person_detector.keras"))', SOURCE)
         self.assertNotIn("include_optimizer=False", SOURCE)
