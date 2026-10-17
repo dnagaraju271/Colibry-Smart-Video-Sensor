@@ -435,6 +435,81 @@ def decode_predictions(raw: np.ndarray, score_floor: float = 0.01) -> list[tuple
     return [(boxes[index], float(scores[index])) for index in selected]
 
 
+def save_validation_debug_images(
+    images: np.ndarray,
+    ground_truth: list[np.ndarray],
+    predictions: list[list[tuple[np.ndarray, float]]],
+    output_dir: Path,
+    confidence_threshold: float = 0.55,
+    image_count: int = 16,
+) -> Path:
+    """Write an inspection montage with ground-truth boxes in green and predictions in red."""
+    from PIL import ImageDraw
+
+    positive_indices = [i for i, boxes in enumerate(ground_truth) if len(boxes) > 0]
+    empty_indices = [i for i, boxes in enumerate(ground_truth) if len(boxes) == 0]
+    n_positive = min(len(positive_indices), (image_count + 1) // 2)
+    n_empty = min(len(empty_indices), image_count // 2)
+    chosen = positive_indices[:n_positive] + empty_indices[:n_empty]
+    if len(chosen) < image_count:
+        already = set(chosen)
+        chosen.extend(i for i in range(len(images)) if i not in already and len(chosen) < image_count)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tile_width, tile_height = 330, 286
+    image_width, image_height = IMAGE_WIDTH * 2, IMAGE_HEIGHT * 2
+    columns = 4
+    rows = (len(chosen) + columns - 1) // columns
+    montage = Image.new("RGB", (columns * tile_width, rows * tile_height), "white")
+
+    for slot, index in enumerate(chosen):
+        gray = np.clip(images[index, ..., 0] * 255.0, 0, 255).astype(np.uint8)
+        image = Image.fromarray(gray, mode="L").convert("RGB").resize(
+            (image_width, image_height), Image.Resampling.NEAREST
+        )
+        draw = ImageDraw.Draw(image)
+        gt_boxes = np.asarray(ground_truth[index]).reshape(-1, 4)
+        chosen_predictions = [
+            (box, score) for box, score in predictions[index]
+            if score >= confidence_threshold
+        ][:20]
+
+        # Draw labels first, then predictions so overlaps remain visible.
+        for x1, y1, x2, y2 in gt_boxes:
+            draw.rectangle(
+                (x1 * image_width, y1 * image_height,
+                 x2 * image_width, y2 * image_height),
+                outline=(40, 190, 70), width=2,
+            )
+        for box, score in chosen_predictions:
+            x1, y1, x2, y2 = [float(v) for v in box]
+            draw.rectangle(
+                (x1 * image_width, y1 * image_height,
+                 x2 * image_width, y2 * image_height),
+                outline=(245, 45, 45), width=2,
+            )
+            draw.text((max(0, int(x1 * image_width)), max(0, int(y1 * image_height))),
+                      f"{score:.2f}", fill=(245, 45, 45))
+
+        tile = Image.new("RGB", (tile_width, tile_height), "white")
+        tile_draw = ImageDraw.Draw(tile)
+        tile_draw.text(
+            (5, 3),
+            f"val idx={index} GT={len(gt_boxes)} pred>={confidence_threshold:.3f}:"
+            f"{len(chosen_predictions)}",
+            fill=(0, 0, 0),
+        )
+        tile.paste(image, (5, 25))
+        x = (slot % columns) * tile_width
+        y = (slot // columns) * tile_height
+        montage.paste(tile, (x, y))
+        image.save(output_dir / f"validation_{index:04d}.png")
+
+    montage_path = output_dir / "validation_montage.png"
+    montage.save(montage_path)
+    return montage_path
+
+
 def summarize_objectness_scores(
     raw_predictions: np.ndarray,
     targets: np.ndarray,
@@ -561,6 +636,18 @@ def main() -> None:
         "--evaluate-weights", type=Path, default=None,
         help="Load this existing .weights.h5 checkpoint, skip training, and run validation/export.",
     )
+    parser.add_argument(
+        "--save-debug-images", action="store_true",
+        help="Save a validation montage with green ground-truth and red predicted boxes.",
+    )
+    parser.add_argument(
+        "--debug-confidence-threshold", type=float, default=0.55,
+        help="Confidence threshold used for optional visual debugging (default: 0.55).",
+    )
+    parser.add_argument(
+        "--debug-image-count", type=int, default=16,
+        help="Maximum validation images in the optional montage (default: 16).",
+    )
     args = parser.parse_args()
     if args.evaluate_weights is not None:
         args.evaluate_weights = args.evaluate_weights.expanduser().resolve()
@@ -585,6 +672,10 @@ def main() -> None:
         parser.error("eval-confidence-thresholds must be comma-separated numbers")
     if not eval_thresholds or any(not 0.0 <= value <= 1.0 for value in eval_thresholds):
         parser.error("eval-confidence-thresholds must contain values between 0 and 1")
+    if not 0.0 <= args.debug_confidence_threshold <= 1.0:
+        parser.error("debug-confidence-threshold must be between 0 and 1")
+    if args.debug_image_count < 1:
+        parser.error("debug-image-count must be positive")
     if len(set(eval_thresholds)) != len(eval_thresholds):
         parser.error("eval-confidence-thresholds must not contain duplicates")
 
@@ -692,6 +783,13 @@ def main() -> None:
     raw_train = model.predict(x_train, batch_size=args.batch_size, verbose=0)
     raw = model.predict(x_val, batch_size=args.batch_size, verbose=1)
     decoded = [decode_predictions(item) for item in raw]
+    if args.save_debug_images:
+        debug_path = save_validation_debug_images(
+            x_val, val_gt, decoded, args.output_dir / "debug_images",
+            confidence_threshold=args.debug_confidence_threshold,
+            image_count=args.debug_image_count,
+        )
+        print("Saved validation debug montage:", debug_path)
     report["training_objectness_score_diagnostics"] = summarize_objectness_scores(
         raw_train, y_train, eval_thresholds
     )
