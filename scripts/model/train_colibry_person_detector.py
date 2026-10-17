@@ -119,9 +119,10 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
     # This model predicts a box centred at each assigned grid cell, not whether
     # person pixels happen to fall inside that cell. Therefore every unassigned
     # grid cell is eligible background, even inside the box of a different centre.
-    background_count = tf.reduce_sum(background_eligibility, axis=[1, 2])
+    background_mask = background_eligibility
+    background_count = tf.reduce_sum(background_mask, axis=[1, 2])
     all_background_per_image = (
-        tf.reduce_sum(bce * background_eligibility, axis=[1, 2]) /
+        tf.reduce_sum(bce * background_mask, axis=[1, 2]) /
         tf.maximum(background_count, 1.0)
     )
     all_background_loss = tf.reduce_mean(all_background_per_image)
@@ -147,7 +148,7 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
 
     hard_negative_per_image = tf.map_fn(
         hard_negatives_for_image,
-        (bce, background_eligibility, positive_weights),
+        (bce, background_mask, positive_weights),
         fn_output_signature=tf.float32,
     )
     hard_negative_loss = tf.reduce_mean(hard_negative_per_image)
