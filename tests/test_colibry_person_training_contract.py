@@ -39,19 +39,28 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
         self.assertEqual(module_integer("GRID_ROWS"), 32)
         self.assertEqual(module_integer("VALUES_PER_CELL"), 5)
 
-    def test_training_targets_have_an_extra_background_mask_channel(self) -> None:
-        self.assertEqual(module_integer("TARGET_CHANNELS"), 6)
-        self.assertEqual(module_integer("TARGET_BACKGROUND_MASK_INDEX"), 5)
+    def test_training_targets_hold_distillation_weights_without_changing_model_output(self) -> None:
+        self.assertEqual(module_integer("VALUES_PER_CELL"), 5)
+        self.assertEqual(module_integer("TARGET_CHANNELS"), 8)
+        self.assertEqual(module_integer("TARGET_POSITIVE_WEIGHT_INDEX"), 5)
+        self.assertEqual(module_integer("TARGET_BACKGROUND_MASK_INDEX"), 6)
+        self.assertEqual(module_integer("TARGET_BOX_WEIGHT_INDEX"), 7)
         self.assertIn("target[..., TARGET_BACKGROUND_MASK_INDEX] = 1.0", SOURCE)
         self.assertIn('"model_output_values_per_cell": VALUES_PER_CELL', SOURCE)
         self.assertIn('"target_values_per_cell": TARGET_CHANNELS', SOURCE)
 
-    def test_cells_inside_known_boxes_are_ignored_by_background_loss(self) -> None:
-        self.assertIn("def _mask_box_cells_from_background(", SOURCE)
-        self.assertIn("background_eligibility = y_true[..., TARGET_BACKGROUND_MASK_INDEX]", SOURCE)
-        self.assertIn("background_mask = (1.0 - obj) * background_eligibility", SOURCE)
-        self.assertIn("eligible_background = (image_obj < 0.5) & (image_background_eligibility > 0.5)", SOURCE)
-        self.assertIn('"background_grid_cells_ignored"', SOURCE)
+    def test_every_unassigned_cell_is_eligible_background(self) -> None:
+        self.assertIn("background_mask = background_eligibility", SOURCE)
+        self.assertIn("eligible_background = image_background_eligibility > 0.5", SOURCE)
+        self.assertNotIn("def _mask_box_cells_from_background(", SOURCE)
+        self.assertNotIn("background_cells_ignored_by_gt_boxes", SOURCE)
+
+    def test_teacher_boxes_use_soft_objectness_and_reduced_box_weight(self) -> None:
+        self.assertIn('"--teacher-box-weight"', SOURCE)
+        self.assertIn("soft_score = float(np.clip(score, 0.01, 0.99))", SOURCE)
+        self.assertIn("target[row, col, TARGET_POSITIVE_WEIGHT_INDEX] = soft_score", SOURCE)
+        self.assertIn("target[row, col, TARGET_BOX_WEIGHT_INDEX] = soft_score * teacher_box_weight", SOURCE)
+        self.assertIn('"teacher_soft_target_cells"', SOURCE)
 
     def test_detector_backbone_capacity_is_configurable(self) -> None:
         self.assertIn('"--channels"', SOURCE)
@@ -112,6 +121,7 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
         self.assertIn("def summarize_objectness_scores(", SOURCE)
         self.assertIn('"positive_target_cells"', SOURCE)
         self.assertIn('"background_cells"', SOURCE)
+        self.assertIn('"teacher_soft_target_cells"', SOURCE)
         self.assertIn('"objectness_score_diagnostics"', SOURCE)
 
     def test_native_keras_save_does_not_pass_unsupported_optimizer_argument(self) -> None:
