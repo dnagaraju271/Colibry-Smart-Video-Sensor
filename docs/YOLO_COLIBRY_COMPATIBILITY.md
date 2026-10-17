@@ -25,6 +25,12 @@ python3 scripts/model/check_yolo_colibry_compat.py \
   --model /path/to/yolov8n.onnx \
   --check-compiler \
   --json-report runs/yolo_colibry_check.json
+
+# Attempt a compiler compatibility check and save the full log outside the repository.
+python3 scripts/model/check_yolo_colibry_compat.py \
+  --model /path/to/yolov8n.onnx \
+  --run-compiler \
+  --json-report "$HOME/models/colibry_yolo/compiler_test/yolov8n_report.json"
 ```
 
 You can also select a model without changing source code:
@@ -58,11 +64,19 @@ Only install what matches the format you want to inspect:
 
 The checker reports when an optional inspector is missing; it does not install packages automatically.
 
-## Compiler execution is deliberately explicit
+## Compiler execution
 
-The exact command-line arguments supported by nnpa-compiler can depend on the installed SDK/compiler version. Therefore, compiler.command in the JSON config starts empty. The script refuses --run-compiler until the verified invocation has been placed in that setting. Command arguments may use {model}, {output}, and {root} placeholders. The command is executed without a shell.
+The configuration uses the invocation verified against Colibry NNPA compiler 0.1.2:
 
-This keeps routine model selection out of source code while avoiding guessed compiler flags. A compiler pass is still not a substitute for testing inference on the physical board.
+```text
+nnpa-compiler MODEL --verbose
+```
+
+Set `compiler.path`, `compiler.command`, `compiler.output_dir`, and `compiler.timeout_seconds` in the JSON configuration for your machine. The command template supports `{compiler}`, `{model}`, `{output}`, and `{root}` placeholders. The checker runs it without a shell and uses the configured output directory as its working directory, outside the Git repository by default. It saves a compiler log and records any first unsupported operator it can recognize.
+
+Only ONNX, TFLite, and TensorFlow/Keras-style models are candidates for this CLI. The checker refuses raw `.pt/.pth` model files and asks you to export them first. Compilation is explicitly opt-in through `--run-compiler`; the script never flashes the board.
+
+This test may fail on an unsupported layer (as standard YOLO exports can); failure is a useful compatibility result. Even a successful compile is not a substitute for testing inference on the physical board.
 
 ## Interpret the result
 
