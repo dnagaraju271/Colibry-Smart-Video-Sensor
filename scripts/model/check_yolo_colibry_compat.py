@@ -361,16 +361,16 @@ def run_compiler(config: dict[str, Any], model: Path) -> dict[str, Any]:
     )
     log_path = output_dir / f"{model.stem}_compiler.log"
     log_path.write_text(
-        "COMMAND: " + json.dumps(command) + "\\n"
-        + f"RETURN CODE: {result.returncode}\\n\\nSTDOUT:\\n" + result.stdout
-        + "\\nSTDERR:\\n" + result.stderr,
+        "COMMAND: " + json.dumps(command) + "\n"
+        + f"RETURN CODE: {result.returncode}\n\nSTDOUT:\n" + result.stdout
+        + "\nSTDERR:\n" + result.stderr,
         encoding="utf-8",
     )
     after = {path.resolve() for path in output_dir.glob("*.nnpa")}
     created = sorted(str(path) for path in after - before)
-    combined = result.stdout + "\\n" + result.stderr
+    combined = result.stdout + "\n" + result.stderr
     import re
-    unsupported = re.search(r"(?:layer|operator)\\s+([A-Za-z0-9_]+)\\s+is unsupported", combined, re.IGNORECASE)
+    unsupported = re.search(r"(?:layer|operator)\s+([A-Za-z0-9_]+)\s+is unsupported", combined, re.IGNORECASE)
     return {
         "command": command,
         "working_directory": str(output_dir),
