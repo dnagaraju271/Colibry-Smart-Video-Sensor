@@ -39,6 +39,20 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
         self.assertEqual(module_integer("GRID_ROWS"), 32)
         self.assertEqual(module_integer("VALUES_PER_CELL"), 5)
 
+    def test_training_targets_have_an_extra_background_mask_channel(self) -> None:
+        self.assertEqual(module_integer("TARGET_CHANNELS"), 6)
+        self.assertEqual(module_integer("TARGET_BACKGROUND_MASK_INDEX"), 5)
+        self.assertIn("target[..., TARGET_BACKGROUND_MASK_INDEX] = 1.0", SOURCE)
+        self.assertIn('"model_output_values_per_cell": VALUES_PER_CELL', SOURCE)
+        self.assertIn('"target_values_per_cell": TARGET_CHANNELS', SOURCE)
+
+    def test_cells_inside_known_boxes_are_ignored_by_background_loss(self) -> None:
+        self.assertIn("def _mask_box_cells_from_background(", SOURCE)
+        self.assertIn("background_eligibility = y_true[..., TARGET_BACKGROUND_MASK_INDEX]", SOURCE)
+        self.assertIn("background_mask = (1.0 - obj) * background_eligibility", SOURCE)
+        self.assertIn("eligible_background = (image_obj < 0.5) & (image_background_eligibility > 0.5)", SOURCE)
+        self.assertIn('"background_grid_cells_ignored"', SOURCE)
+
     def test_detector_backbone_capacity_is_configurable(self) -> None:
         self.assertIn('"--channels"', SOURCE)
         self.assertIn('"--residual-blocks"', SOURCE)
