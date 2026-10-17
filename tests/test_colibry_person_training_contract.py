@@ -39,6 +39,12 @@ class ColibryPersonTrainingContractTests(unittest.TestCase):
         self.assertEqual(module_integer("GRID_ROWS"), 32)
         self.assertEqual(module_integer("VALUES_PER_CELL"), 5)
 
+    def test_detector_backbone_capacity_is_configurable(self) -> None:
+        self.assertIn('"--channels"', SOURCE)
+        self.assertIn('"--residual-blocks"', SOURCE)
+        self.assertIn("build_model(channels=args.channels, residual_blocks=args.residual_blocks)", SOURCE)
+        self.assertIn('"model_architecture"', SOURCE)
+
     def test_keras_input_uses_height_width_channel_order(self) -> None:
         self.assertIn(
             "shape=(IMAGE_HEIGHT, IMAGE_WIDTH, INPUT_CHANNELS)",
