@@ -24,7 +24,9 @@ IMAGE_HEIGHT = 128
 INPUT_CHANNELS = 1
 GRID_COLS = 40
 GRID_ROWS = 32
-VALUES_PER_CELL = 5  # objectness, x offset, y offset, width, height
+VALUES_PER_CELL = 5  # Model outputs: objectness, x offset, y offset, width, height
+TARGET_BACKGROUND_MASK_INDEX = VALUES_PER_CELL
+TARGET_CHANNELS = VALUES_PER_CELL + 1  # extra target-only channel: 1=valid background, 0=ignore background loss
 MIN_PERSON_HEIGHT_PX = 24
 POSITIVE_LOSS_WEIGHT = 2.0
 NEGATIVE_LOSS_WEIGHT = 1.0
@@ -110,11 +112,11 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
         tf.maximum(tf.reduce_sum(positive_image_mask), 1.0)
     )
 
-    # Penalize all background cells as well as the most difficult ones.
-    # Hard-negative-only mining leaves most of the 1,280 cells without direct
-    # objectness gradient on a given image. The dense term teaches global background
-    # calibration; the hard term focuses extra weight on confusing locations.
-    background_mask = 1.0 - obj
+    # Only cells outside all labeled/pseudo boxes are eligible for background loss.
+    # Cells inside a known person box but away from its center are ignored rather
+    # than contradictorily trained as background.
+    background_eligibility = y_true[..., TARGET_BACKGROUND_MASK_INDEX]
+    background_mask = (1.0 - obj) * background_eligibility
     background_count = tf.reduce_sum(background_mask, axis=[1, 2])
     all_background_per_image = (
         tf.reduce_sum(bce * background_mask, axis=[1, 2]) /
@@ -122,11 +124,14 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
     )
     all_background_loss = tf.reduce_mean(all_background_per_image)
 
-    def hard_negatives_for_image(inputs: tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
-        image_bce, image_obj = inputs
+    def hard_negatives_for_image(
+        inputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor]
+    ) -> tf.Tensor:
+        image_bce, image_obj, image_background_eligibility = inputs
+        eligible_background = (image_obj < 0.5) & (image_background_eligibility > 0.5)
         losses = tf.boolean_mask(
             tf.reshape(image_bce, [-1]),
-            tf.reshape(image_obj, [-1]) < 0.5,
+            tf.reshape(eligible_background, [-1]),
         )
         n = tf.size(losses)
 
@@ -140,7 +145,7 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
 
     hard_negative_per_image = tf.map_fn(
         hard_negatives_for_image,
-        (bce, obj),
+        (bce, obj, background_eligibility),
         fn_output_signature=tf.float32,
     )
     hard_negative_loss = tf.reduce_mean(hard_negative_per_image)
@@ -227,20 +232,40 @@ def read_ground_truth(label_path: Path) -> tuple[list[tuple[float, ...]], list[t
     return cxcywh, xyxy
 
 
+def _mask_box_cells_from_background(
+    target: np.ndarray,
+    box_xyxy: tuple[float, ...] | np.ndarray,
+) -> int:
+    """Mark grid cells centered inside a known box as ineligible background cells."""
+    x1, y1, x2, y2 = [float(value) for value in box_xyxy]
+    cell_centres_x = (np.arange(GRID_COLS, dtype=np.float32) + 0.5) / GRID_COLS
+    cell_centres_y = (np.arange(GRID_ROWS, dtype=np.float32) + 0.5) / GRID_ROWS
+    cols = np.flatnonzero((cell_centres_x >= x1) & (cell_centres_x <= x2))
+    rows = np.flatnonzero((cell_centres_y >= y1) & (cell_centres_y <= y2))
+    if rows.size == 0 or cols.size == 0:
+        return 0
+    before = target[np.ix_(rows, cols, np.array([TARGET_BACKGROUND_MASK_INDEX]))]
+    ignored_count = int(np.count_nonzero(before > 0.5))
+    target[np.ix_(rows, cols, np.array([TARGET_BACKGROUND_MASK_INDEX]))] = 0.0
+    return ignored_count
+
+
 def encode_targets(
     label_path: Path,
     teacher_record: dict[str, Any] | None = None,
     pseudo_confidence: float = 0.35,
     pseudo_exclude_iou: float = 0.30,
 ) -> tuple[np.ndarray, list[tuple[float, ...]], Counter]:
-    """Encode ground truth and optionally add YOLO boxes only to known-positive images."""
+    """Encode detections and ignore background cells inside known person boxes."""
     boxes, gt_xyxy = read_ground_truth(label_path)
-    target = np.zeros((GRID_ROWS, GRID_COLS, VALUES_PER_CELL), dtype=np.float32)
+    target = np.zeros((GRID_ROWS, GRID_COLS, TARGET_CHANNELS), dtype=np.float32)
+    target[..., TARGET_BACKGROUND_MASK_INDEX] = 1.0
     counts: Counter = Counter()
     counts["gt_boxes"] = len(boxes)
     eligible: dict[tuple[int, int], list[tuple[float, float, float, float, float]]] = {}
 
-    for cx, cy, width, height in boxes:
+    for (cx, cy, width, height), xyxy in zip(boxes, gt_xyxy):
+        counts["background_cells_ignored_by_gt_boxes"] += _mask_box_cells_from_background(target, xyxy)
         if height * IMAGE_HEIGHT < MIN_PERSON_HEIGHT_PX:
             counts["small_gt_ignored"] += 1
             continue
@@ -253,9 +278,10 @@ def encode_targets(
     for (row, col), cell_boxes in eligible.items():
         cell_boxes.sort(key=lambda item: (-item[0], item[2], item[1]))
         _, cx, cy, width, height = cell_boxes[0]
-        target[row, col] = (
+        target[row, col, :VALUES_PER_CELL] = (
             1.0, cx * GRID_COLS - col, cy * GRID_ROWS - row, width, height
         )
+        target[row, col, TARGET_BACKGROUND_MASK_INDEX] = 0.0
         counts["gt_boxes_retained"] += 1
         counts["gt_collision_drops"] += len(cell_boxes) - 1
 
@@ -297,9 +323,13 @@ def encode_targets(
             counts["pseudo_cell_conflicts"] += 1
             continue
 
-        target[row, col] = (
+        counts["background_cells_ignored_by_pseudo_boxes"] += _mask_box_cells_from_background(
+            target, (x1, y1, x2, y2)
+        )
+        target[row, col, :VALUES_PER_CELL] = (
             1.0, cx * GRID_COLS - col, cy * GRID_ROWS - row, width, height
         )
+        target[row, col, TARGET_BACKGROUND_MASK_INDEX] = 0.0
         counts["pseudo_boxes_added"] += 1
         if counts["pseudo_boxes_added"] >= 20:
             break
@@ -386,6 +416,9 @@ def load_split(
         targets.append(target)
         gt_by_image.append(np.asarray(gt_xyxy, dtype=np.float32).reshape(-1, 4))
         totals.update(stats)
+        totals["background_grid_cells_ignored"] += int(
+            np.count_nonzero((target[..., 0] < 0.5) & (target[..., TARGET_BACKGROUND_MASK_INDEX] < 0.5))
+        )
         totals["empty_images"] += int(len(gt_boxes) == 0)
 
     x = np.stack(images).astype(np.float32)
@@ -521,7 +554,14 @@ def summarize_objectness_scores(
         1.0 + np.exp(-np.clip(raw_predictions[..., 0], -30.0, 30.0))
     )
     positive_mask = targets[..., 0] >= 0.5
-    background_mask = ~positive_mask
+    background_mask = (
+        (targets[..., 0] < 0.5)
+        & (targets[..., TARGET_BACKGROUND_MASK_INDEX] > 0.5)
+    )
+    ignored_box_mask = (
+        (targets[..., 0] < 0.5)
+        & (targets[..., TARGET_BACKGROUND_MASK_INDEX] <= 0.5)
+    )
 
     def describe(values: np.ndarray) -> dict[str, Any]:
         if values.size == 0:
@@ -542,14 +582,17 @@ def summarize_objectness_scores(
 
     positive_scores = probabilities[positive_mask]
     background_scores = probabilities[background_mask]
+    ignored_box_scores = probabilities[ignored_box_mask]
     return {
         "note": (
-            "Scores are sigmoid objectness probabilities at target grid cells: "
-            "positive means a validation ground-truth center cell; background means "
-            "all other grid cells. This diagnoses score separation and is not a detection metric."
+            "Scores are sigmoid objectness probabilities at grid cells. Positive cells are GT/pseudo box centers; "
+            "background cells are outside all target boxes and contribute to background loss; ignored_box_cells "
+            "are inside known target boxes away from their assigned center, so they are excluded from background loss. "
+            "These score summaries are diagnostics, not detection metrics."
         ),
         "positive_target_cells": describe(positive_scores),
         "background_cells": describe(background_scores),
+        "ignored_box_cells": describe(ignored_box_scores),
         "positive_minus_background_mean": (
             float(np.mean(positive_scores) - np.mean(background_scores))
             if positive_scores.size and background_scores.size else None
@@ -706,9 +749,12 @@ def main() -> None:
     x_val, y_val, val_gt, val_summary = load_split(args.dataset, "val")
 
     expected_x = (len(x_train), IMAGE_HEIGHT, IMAGE_WIDTH, INPUT_CHANNELS)
-    expected_y = (len(x_train), GRID_ROWS, GRID_COLS, VALUES_PER_CELL)
+    expected_y = (len(x_train), GRID_ROWS, GRID_COLS, TARGET_CHANNELS)
     if x_train.shape != expected_x or y_train.shape != expected_y:
         raise ValueError(f"Training shapes don't match expected: {x_train.shape}, {y_train.shape}")
+    expected_val_y = (len(x_val), GRID_ROWS, GRID_COLS, TARGET_CHANNELS)
+    if y_val.shape != expected_val_y:
+        raise ValueError(f"Validation targets don't match expected: {y_val.shape}")
     if x_val.shape[1:] != (IMAGE_HEIGHT, IMAGE_WIDTH, INPUT_CHANNELS):
         raise ValueError(f"Invalid validation image shape: {x_val.shape}")
 
@@ -728,7 +774,10 @@ def main() -> None:
         "target_contract": {
             "grid_width": GRID_COLS,
             "grid_height": GRID_ROWS,
-            "values_per_cell": VALUES_PER_CELL,
+            "model_output_values_per_cell": VALUES_PER_CELL,
+            "target_values_per_cell": TARGET_CHANNELS,
+            "background_mask_channel_index": TARGET_BACKGROUND_MASK_INDEX,
+            "background_mask_semantics": "1=eligible background; 0=ignore background loss for cells centered inside a ground-truth or accepted teacher box",
         },
         "model_parameters": model.count_params(),
         "model_architecture": {
