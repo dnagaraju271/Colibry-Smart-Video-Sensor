@@ -466,6 +466,8 @@ def evaluate_predictions(
         "true_positives": tp,
         "false_positives": fp,
         "false_negatives": fn,
+        "predicted_boxes": tp + fp,
+        "average_predictions_per_image": (tp + fp) / max(len(predictions), 1),
         "precision": precision,
         "recall": recall,
         "f1": 2 * precision * recall / max(precision + recall, 1e-12),
@@ -489,6 +491,10 @@ def main() -> None:
     parser.add_argument("--pseudo-confidence", type=float, default=0.35)
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument(
+        "--eval-confidence-thresholds", default="0.25,0.35,0.50,0.60,0.70,0.80,0.90",
+        help="Comma-separated confidence thresholds for validation metrics.",
+    )
+    parser.add_argument(
         "--evaluate-weights", type=Path, default=None,
         help="Load this existing .weights.h5 checkpoint, skip training, and run validation/export.",
     )
@@ -502,6 +508,18 @@ def main() -> None:
         parser.error("epochs and batch-size must be positive, as must learning-rate")
     if not 0.0 <= args.pseudo_confidence <= 1.0:
         parser.error("pseudo-confidence must be between 0 and 1")
+    try:
+        eval_thresholds = [
+            float(value.strip())
+            for value in args.eval_confidence_thresholds.split(",")
+            if value.strip()
+        ]
+    except ValueError:
+        parser.error("eval-confidence-thresholds must be comma-separated numbers")
+    if not eval_thresholds or any(not 0.0 <= value <= 1.0 for value in eval_thresholds):
+        parser.error("eval-confidence-thresholds must contain values between 0 and 1")
+    if len(set(eval_thresholds)) != len(eval_thresholds):
+        parser.error("eval-confidence-thresholds must not contain duplicates")
 
     global MIN_PERSON_HEIGHT_PX
     MIN_PERSON_HEIGHT_PX = args.min_person_height_px
@@ -603,11 +621,13 @@ def main() -> None:
     report["validation_metrics"] = {
         "metric_note": (
             "Greedy one-to-one matching at IoU >= 0.50 after NMS IoU 0.50. "
-            "Validation labels do not use teacher pseudo-labels. These are not COCO mAP."
+            "Validation labels do not use teacher pseudo-labels. These are not COCO mAP. "
+            "Per-image prediction counts are after NMS and confidence filtering."
         ),
-        "at_confidence_0.25": evaluate_predictions(decoded, val_gt, 0.25),
-        "at_confidence_0.35": evaluate_predictions(decoded, val_gt, 0.35),
-        "at_confidence_0.50": evaluate_predictions(decoded, val_gt, 0.50),
+        **{
+            f"at_confidence_{threshold:.2f}": evaluate_predictions(decoded, val_gt, threshold)
+            for threshold in eval_thresholds
+        },
     }
     report_path = args.output_dir / "training_report.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
