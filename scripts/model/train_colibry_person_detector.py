@@ -533,6 +533,10 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument(
+        "--negative-loss-weight", type=float, default=4.0,
+        help="Multiplier for the combined dense-background and hard-negative objectness loss (experimental default: 4.0).",
+    )
     parser.add_argument("--min-person-height-px", type=int, default=24)
     parser.add_argument("--pseudo-confidence", type=float, default=0.35)
     parser.add_argument("--check-only", action="store_true")
@@ -552,6 +556,8 @@ def main() -> None:
 
     if args.epochs < 1 or args.batch_size < 1 or args.learning_rate <= 0:
         parser.error("epochs and batch-size must be positive, as must learning-rate")
+    if args.negative_loss_weight <= 0:
+        parser.error("negative-loss-weight must be positive")
     if not 0.0 <= args.pseudo_confidence <= 1.0:
         parser.error("pseudo-confidence must be between 0 and 1")
     try:
@@ -567,8 +573,9 @@ def main() -> None:
     if len(set(eval_thresholds)) != len(eval_thresholds):
         parser.error("eval-confidence-thresholds must not contain duplicates")
 
-    global MIN_PERSON_HEIGHT_PX
+    global MIN_PERSON_HEIGHT_PX, NEGATIVE_LOSS_WEIGHT
     MIN_PERSON_HEIGHT_PX = args.min_person_height_px
+    NEGATIVE_LOSS_WEIGHT = args.negative_loss_weight
     args.dataset = args.dataset.expanduser().resolve()
     args.output_dir = args.output_dir.expanduser().resolve()
     args.output_dir.mkdir(parents=True, exist_ok=True)
