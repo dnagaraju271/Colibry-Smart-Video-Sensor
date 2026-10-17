@@ -662,8 +662,12 @@ def main() -> None:
     model.save_weights(str(args.output_dir / "final.weights.h5"))
     model.save(str(args.output_dir / "colibry_person_detector.keras"))
 
+    raw_train = model.predict(x_train, batch_size=args.batch_size, verbose=0)
     raw = model.predict(x_val, batch_size=args.batch_size, verbose=1)
     decoded = [decode_predictions(item) for item in raw]
+    report["training_objectness_score_diagnostics"] = summarize_objectness_scores(
+        raw_train, y_train, eval_thresholds
+    )
     report["objectness_score_diagnostics"] = summarize_objectness_scores(
         raw, y_val, eval_thresholds
     )
@@ -680,7 +684,9 @@ def main() -> None:
     }
     report_path = args.output_dir / "training_report.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print("\n=== OBJECTNESS SCORE DIAGNOSTICS ===")
+    print("\n=== TRAINING OBJECTNESS SCORE DIAGNOSTICS ===")
+    print(json.dumps(report["training_objectness_score_diagnostics"], indent=2))
+    print("\n=== VALIDATION OBJECTNESS SCORE DIAGNOSTICS ===")
     print(json.dumps(report["objectness_score_diagnostics"], indent=2))
     print("\n=== VALIDATION METRICS ===")
     print(json.dumps(report["validation_metrics"], indent=2))
