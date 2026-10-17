@@ -25,8 +25,10 @@ INPUT_CHANNELS = 1
 GRID_COLS = 40
 GRID_ROWS = 32
 VALUES_PER_CELL = 5  # Model outputs: objectness, x offset, y offset, width, height
-TARGET_BACKGROUND_MASK_INDEX = 5  # zero-based index of the extra target-only mask channel
-TARGET_CHANNELS = 6  # five model-output values plus target-only background eligibility mask
+TARGET_POSITIVE_WEIGHT_INDEX = 5  # target-only objectness supervision weight
+TARGET_BACKGROUND_MASK_INDEX = 6  # target-only background eligibility mask
+TARGET_BOX_WEIGHT_INDEX = 7  # target-only box regression weight
+TARGET_CHANNELS = 8  # five model outputs plus positive, background, and box weights
 MIN_PERSON_HEIGHT_PX = 24
 POSITIVE_LOSS_WEIGHT = 2.0
 NEGATIVE_LOSS_WEIGHT = 1.0
@@ -91,20 +93,22 @@ def build_model(channels: int = 24, residual_blocks: int = 6) -> keras.Model:
 
 
 def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-    """Balance positive images against hard negatives instead of rewarding constant low scores.
+    """Balanced objectness + box regression with optional soft teacher targets.
 
-    Positive objectness losses are averaged over images that contain positives.
-    Negative losses are averaged over images, using the highest-loss background cells.
-    The independent averages avoid the earlier loss's positive/negative count imbalance.
+    Target-only channels provide positive supervision weights, background eligibility,
+    and box regression weights. The model still predicts only five values per cell.
     """
     obj = y_true[..., 0]
+    positive_weights = y_true[..., TARGET_POSITIVE_WEIGHT_INDEX]
+    background_eligibility = y_true[..., TARGET_BACKGROUND_MASK_INDEX]
+    box_weights = y_true[..., TARGET_BOX_WEIGHT_INDEX]
     logits = y_pred[..., 0]
     bce = tf.nn.sigmoid_cross_entropy_with_logits(labels=obj, logits=logits)
 
-    pos_count = tf.reduce_sum(obj, axis=[1, 2])
+    pos_count = tf.reduce_sum(positive_weights, axis=[1, 2])
     positive_image_mask = tf.cast(pos_count > 0.0, tf.float32)
     pos_loss_per_image = (
-        tf.reduce_sum(bce * obj, axis=[1, 2]) /
+        tf.reduce_sum(bce * positive_weights, axis=[1, 2]) /
         tf.maximum(pos_count, 1.0)
     )
     pos_loss = (
@@ -112,14 +116,12 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
         tf.maximum(tf.reduce_sum(positive_image_mask), 1.0)
     )
 
-    # Only cells outside all labeled/pseudo boxes are eligible for background loss.
-    # Cells inside a known person box but away from its center are ignored rather
-    # than contradictorily trained as background.
-    background_eligibility = y_true[..., TARGET_BACKGROUND_MASK_INDEX]
-    background_mask = (1.0 - obj) * background_eligibility
-    background_count = tf.reduce_sum(background_mask, axis=[1, 2])
+    # This model predicts a box centred at each assigned grid cell, not whether
+    # person pixels happen to fall inside that cell. Therefore every unassigned
+    # grid cell is eligible background, even inside the box of a different centre.
+    background_count = tf.reduce_sum(background_eligibility, axis=[1, 2])
     all_background_per_image = (
-        tf.reduce_sum(bce * background_mask, axis=[1, 2]) /
+        tf.reduce_sum(bce * background_eligibility, axis=[1, 2]) /
         tf.maximum(background_count, 1.0)
     )
     all_background_loss = tf.reduce_mean(all_background_per_image)
@@ -127,8 +129,8 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
     def hard_negatives_for_image(
         inputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor]
     ) -> tf.Tensor:
-        image_bce, image_obj, image_background_eligibility = inputs
-        eligible_background = (image_obj < 0.5) & (image_background_eligibility > 0.5)
+        image_bce, image_background_eligibility, image_positive_weights = inputs
+        eligible_background = image_background_eligibility > 0.5
         losses = tf.boolean_mask(
             tf.reshape(image_bce, [-1]),
             tf.reshape(eligible_background, [-1]),
@@ -136,7 +138,7 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
         n = tf.size(losses)
 
         def calculate() -> tf.Tensor:
-            image_positive_count = tf.reduce_sum(image_obj)
+            image_positive_count = tf.reduce_sum(image_positive_weights)
             k = tf.maximum(tf.cast(image_positive_count * 3.0, tf.int32), 32)
             k = tf.minimum(tf.minimum(k, 128), n)
             return tf.reduce_mean(tf.math.top_k(losses, k=k, sorted=False).values)
@@ -145,7 +147,7 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
 
     hard_negative_per_image = tf.map_fn(
         hard_negatives_for_image,
-        (bce, obj, background_eligibility),
+        (bce, background_eligibility, positive_weights),
         fn_output_signature=tf.float32,
     )
     hard_negative_loss = tf.reduce_mean(hard_negative_per_image)
@@ -188,8 +190,8 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
     )
     giou = iou - (enclosing_area - union) / (enclosing_area + 1e-7)
 
-    positive_count = tf.maximum(tf.reduce_sum(obj), 1.0)
-    giou_loss = tf.reduce_sum((1.0 - giou) * obj) / positive_count
+    box_count = tf.maximum(tf.reduce_sum(box_weights), 1.0)
+    giou_loss = tf.reduce_sum((1.0 - giou) * box_weights) / box_count
 
     error = tf.abs(pred_v - true_v)
     delta = 0.1
@@ -198,8 +200,8 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
         0.5 * tf.square(error),
         delta * (error - 0.5 * delta),
     )
-    coordinate_count = tf.maximum(tf.reduce_sum(obj) * 4.0, 1.0)
-    coordinate_loss = tf.reduce_sum(huber * obj[..., None]) / coordinate_count
+    coordinate_count = tf.maximum(tf.reduce_sum(box_weights) * 4.0, 1.0)
+    coordinate_loss = tf.reduce_sum(huber * box_weights[..., None]) / coordinate_count
 
     return objectness_loss + GIOU_WEIGHT * giou_loss + coordinate_loss
 
@@ -232,31 +234,20 @@ def read_ground_truth(label_path: Path) -> tuple[list[tuple[float, ...]], list[t
     return cxcywh, xyxy
 
 
-def _mask_box_cells_from_background(
-    target: np.ndarray,
-    box_xyxy: tuple[float, ...] | np.ndarray,
-) -> int:
-    """Mark grid cells centered inside a known box as ineligible background cells."""
-    x1, y1, x2, y2 = [float(value) for value in box_xyxy]
-    cell_centres_x = (np.arange(GRID_COLS, dtype=np.float32) + 0.5) / GRID_COLS
-    cell_centres_y = (np.arange(GRID_ROWS, dtype=np.float32) + 0.5) / GRID_ROWS
-    cols = np.flatnonzero((cell_centres_x >= x1) & (cell_centres_x <= x2))
-    rows = np.flatnonzero((cell_centres_y >= y1) & (cell_centres_y <= y2))
-    if rows.size == 0 or cols.size == 0:
-        return 0
-    before = target[np.ix_(rows, cols, np.array([TARGET_BACKGROUND_MASK_INDEX]))]
-    ignored_count = int(np.count_nonzero(before > 0.5))
-    target[np.ix_(rows, cols, np.array([TARGET_BACKGROUND_MASK_INDEX]))] = 0.0
-    return ignored_count
-
-
 def encode_targets(
     label_path: Path,
     teacher_record: dict[str, Any] | None = None,
     pseudo_confidence: float = 0.35,
     pseudo_exclude_iou: float = 0.30,
+    teacher_box_weight: float = 0.25,
 ) -> tuple[np.ndarray, list[tuple[float, ...]], Counter]:
-    """Encode detections and ignore background cells inside known person boxes."""
+    """Encode ground truth plus confidence-aware YOLO teacher targets.
+
+    Ground-truth boxes are authoritative. The teacher only adds high-confidence
+    detections that do not overlap any GT box and only to images already labelled
+    with at least one person. Teacher objectness stays soft and box regression is
+    weighted below GT regression so teacher noise cannot overrule annotations.
+    """
     boxes, gt_xyxy = read_ground_truth(label_path)
     target = np.zeros((GRID_ROWS, GRID_COLS, TARGET_CHANNELS), dtype=np.float32)
     target[..., TARGET_BACKGROUND_MASK_INDEX] = 1.0
@@ -264,16 +255,13 @@ def encode_targets(
     counts["gt_boxes"] = len(boxes)
     eligible: dict[tuple[int, int], list[tuple[float, float, float, float, float]]] = {}
 
-    for (cx, cy, width, height), xyxy in zip(boxes, gt_xyxy):
-        counts["background_cells_ignored_by_gt_boxes"] += _mask_box_cells_from_background(target, xyxy)
+    for cx, cy, width, height in boxes:
         if height * IMAGE_HEIGHT < MIN_PERSON_HEIGHT_PX:
             counts["small_gt_ignored"] += 1
             continue
         col = min(int(cx * GRID_COLS), GRID_COLS - 1)
         row = min(int(cy * GRID_ROWS), GRID_ROWS - 1)
-        eligible.setdefault((row, col), []).append(
-            (width * height, cx, cy, width, height)
-        )
+        eligible.setdefault((row, col), []).append((width * height, cx, cy, width, height))
 
     for (row, col), cell_boxes in eligible.items():
         cell_boxes.sort(key=lambda item: (-item[0], item[2], item[1]))
@@ -281,11 +269,14 @@ def encode_targets(
         target[row, col, :VALUES_PER_CELL] = (
             1.0, cx * GRID_COLS - col, cy * GRID_ROWS - row, width, height
         )
+        target[row, col, TARGET_POSITIVE_WEIGHT_INDEX] = 1.0
         target[row, col, TARGET_BACKGROUND_MASK_INDEX] = 0.0
+        target[row, col, TARGET_BOX_WEIGHT_INDEX] = 1.0
         counts["gt_boxes_retained"] += 1
         counts["gt_collision_drops"] += len(cell_boxes) - 1
 
-    # A known-empty image remains empty: never trust a teacher to override its label.
+    # Do not add pseudo people to known-empty images: COCO's empty label remains
+    # authoritative. For positive images, use teacher-only detections as soft targets.
     if teacher_record is None or not boxes:
         counts["pseudo_boxes_added"] += 0
         return target, gt_xyxy, counts
@@ -297,6 +288,9 @@ def encode_targets(
     )
     for box, score_value in candidates:
         score = float(score_value)
+        if not np.isfinite(score):
+            counts["pseudo_invalid"] += 1
+            continue
         if score < pseudo_confidence:
             break
         arr = np.asarray(box, dtype=np.float32)
@@ -319,18 +313,19 @@ def encode_targets(
         cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
         col = min(int(cx * GRID_COLS), GRID_COLS - 1)
         row = min(int(cy * GRID_ROWS), GRID_ROWS - 1)
-        if target[row, col, 0] >= 0.5:
+        if target[row, col, TARGET_POSITIVE_WEIGHT_INDEX] > 0.0:
             counts["pseudo_cell_conflicts"] += 1
             continue
 
-        counts["background_cells_ignored_by_pseudo_boxes"] += _mask_box_cells_from_background(
-            target, (x1, y1, x2, y2)
-        )
+        soft_score = float(np.clip(score, 0.01, 0.99))
         target[row, col, :VALUES_PER_CELL] = (
-            1.0, cx * GRID_COLS - col, cy * GRID_ROWS - row, width, height
+            soft_score, cx * GRID_COLS - col, cy * GRID_ROWS - row, width, height
         )
+        target[row, col, TARGET_POSITIVE_WEIGHT_INDEX] = soft_score
         target[row, col, TARGET_BACKGROUND_MASK_INDEX] = 0.0
+        target[row, col, TARGET_BOX_WEIGHT_INDEX] = soft_score * teacher_box_weight
         counts["pseudo_boxes_added"] += 1
+        counts["teacher_soft_targets"] += 1
         if counts["pseudo_boxes_added"] >= 20:
             break
 
@@ -367,6 +362,7 @@ def load_split(
     teacher_cache: dict[str, dict[str, Any]] | None = None,
     add_pseudo_labels: bool = False,
     pseudo_confidence: float = 0.35,
+    teacher_box_weight: float = 0.25,
 ) -> tuple[np.ndarray, np.ndarray, list[np.ndarray], dict[str, Any]]:
     image_dir = dataset / "images" / split
     label_dir = dataset / "labels" / split
@@ -411,14 +407,12 @@ def load_split(
             label_map[image_id],
             teacher,
             pseudo_confidence=pseudo_confidence,
+            teacher_box_weight=teacher_box_weight,
         )
         images.append(pixels[..., None].astype(np.float32) / 255.0)
         targets.append(target)
         gt_by_image.append(np.asarray(gt_xyxy, dtype=np.float32).reshape(-1, 4))
         totals.update(stats)
-        totals["background_grid_cells_ignored"] += int(
-            np.count_nonzero((target[..., 0] < 0.5) & (target[..., TARGET_BACKGROUND_MASK_INDEX] < 0.5))
-        )
         totals["empty_images"] += int(len(gt_boxes) == 0)
 
     x = np.stack(images).astype(np.float32)
@@ -432,9 +426,8 @@ def load_split(
         "retained_ground_truth_boxes": totals["gt_boxes_retained"],
         "small_boxes_ignored": totals["small_gt_ignored"],
         "ground_truth_collision_drops": totals["gt_collision_drops"],
-        "background_cells_ignored_by_ground_truth_boxes": totals["background_cells_ignored_by_gt_boxes"],
-        "background_cells_ignored_by_teacher_pseudo_boxes": totals["background_cells_ignored_by_pseudo_boxes"],
-        "background_grid_cells_ignored": totals["background_grid_cells_ignored"],
+        "background_eligible_grid_cells": int(np.sum(y[..., TARGET_BACKGROUND_MASK_INDEX] > 0.5)),
+        "teacher_soft_targets": totals["teacher_soft_targets"],
         "pseudo_boxes_added": totals["pseudo_boxes_added"],
         "pseudo_boxes_overlapping_ground_truth": totals["pseudo_overlaps_gt"],
         "known_empty_images": totals["empty_images"],
@@ -552,19 +545,13 @@ def summarize_objectness_scores(
     targets: np.ndarray,
     thresholds: list[float],
 ) -> dict[str, Any]:
-    """Summarize whether the objectness head separates target cells from background."""
+    """Summarize positive, eligible-background, and teacher-soft objectness scores."""
     probabilities = 1.0 / (
         1.0 + np.exp(-np.clip(raw_predictions[..., 0], -30.0, 30.0))
     )
-    positive_mask = targets[..., 0] >= 0.5
-    background_mask = (
-        (targets[..., 0] < 0.5)
-        & (targets[..., TARGET_BACKGROUND_MASK_INDEX] > 0.5)
-    )
-    ignored_box_mask = (
-        (targets[..., 0] < 0.5)
-        & (targets[..., TARGET_BACKGROUND_MASK_INDEX] <= 0.5)
-    )
+    positive_mask = targets[..., TARGET_POSITIVE_WEIGHT_INDEX] > 0.0
+    background_mask = targets[..., TARGET_BACKGROUND_MASK_INDEX] > 0.5
+    teacher_mask = positive_mask & (targets[..., 0] < 0.999)
 
     def describe(values: np.ndarray) -> dict[str, Any]:
         if values.size == 0:
@@ -585,17 +572,17 @@ def summarize_objectness_scores(
 
     positive_scores = probabilities[positive_mask]
     background_scores = probabilities[background_mask]
-    ignored_box_scores = probabilities[ignored_box_mask]
+    teacher_scores = probabilities[teacher_mask]
     return {
         "note": (
-            "Scores are sigmoid objectness probabilities at grid cells. Positive cells are GT/pseudo box centers; "
-            "background cells are outside all target boxes and contribute to background loss; ignored_box_cells "
-            "are inside known target boxes away from their assigned center, so they are excluded from background loss. "
-            "These score summaries are diagnostics, not detection metrics."
+            "Positive cells include ground-truth targets and confidence-aware teacher pseudo targets. "
+            "Every unassigned cell is eligible background because each model cell predicts a box centred there. "
+            "Teacher pseudo targets use soft confidence labels and reduced box-regression weights. "
+            "These summaries are diagnostics, not detection metrics."
         ),
         "positive_target_cells": describe(positive_scores),
         "background_cells": describe(background_scores),
-        "ignored_box_cells": describe(ignored_box_scores),
+        "teacher_soft_target_cells": describe(teacher_scores),
         "positive_minus_background_mean": (
             float(np.mean(positive_scores) - np.mean(background_scores))
             if positive_scores.size and background_scores.size else None
@@ -669,6 +656,10 @@ def main() -> None:
         help="Multiplier for the combined dense-background and hard-negative objectness loss (default: 1.0).",
     )
     parser.add_argument(
+        "--teacher-box-weight", type=float, default=0.25,
+        help="Box regression weight for accepted teacher-only detections relative to GT boxes (default: 0.25).",
+    )
+    parser.add_argument(
         "--channels", type=int, default=24,
         help="Feature channels in the residual backbone; default 24 preserves the original 5,541-parameter layout.",
     )
@@ -711,6 +702,8 @@ def main() -> None:
         parser.error("positive-loss-weight must be positive")
     if args.negative_loss_weight <= 0:
         parser.error("negative-loss-weight must be positive")
+    if not 0.0 < args.teacher_box_weight <= 1.0:
+        parser.error("teacher-box-weight must be in (0, 1]")
     if args.channels < 8 or args.residual_blocks < 1:
         parser.error("channels must be >= 8 and residual-blocks must be >= 1")
     if not 0.0 <= args.pseudo_confidence <= 1.0:
@@ -748,6 +741,7 @@ def main() -> None:
         args.dataset, "train", teacher_train,
         add_pseudo_labels=bool(teacher_train),
         pseudo_confidence=args.pseudo_confidence,
+        teacher_box_weight=args.teacher_box_weight,
     )
     x_val, y_val, val_gt, val_summary = load_split(args.dataset, "val")
 
@@ -779,8 +773,10 @@ def main() -> None:
             "grid_height": GRID_ROWS,
             "model_output_values_per_cell": VALUES_PER_CELL,
             "target_values_per_cell": TARGET_CHANNELS,
+            "positive_weight_channel_index": TARGET_POSITIVE_WEIGHT_INDEX,
             "background_mask_channel_index": TARGET_BACKGROUND_MASK_INDEX,
-            "background_mask_semantics": "1=eligible background; 0=ignore background loss for cells centered inside a ground-truth or accepted teacher box",
+            "box_weight_channel_index": TARGET_BOX_WEIGHT_INDEX,
+            "background_mask_semantics": "1=unassigned grid cell trained as background; 0=cell with a ground-truth or accepted teacher target",
         },
         "model_parameters": model.count_params(),
         "model_architecture": {
@@ -792,7 +788,8 @@ def main() -> None:
             "name": "hard_negative_giou_detection_loss",
             "positive_loss_weight": POSITIVE_LOSS_WEIGHT,
             "negative_loss_weight": NEGATIVE_LOSS_WEIGHT,
-            "design": "positive objectness is balanced separately from a per-image background loss combining all negative cells and hard-negative mining",
+            "teacher_box_weight": args.teacher_box_weight,
+            "design": "positive objectness, all unassigned-cell background loss, hard-negative loss, and confidence-aware teacher box regression",
         },
         "training": train_summary,
         "validation": val_summary,
