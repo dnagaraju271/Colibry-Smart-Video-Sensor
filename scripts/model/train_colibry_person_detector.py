@@ -25,7 +25,7 @@ INPUT_CHANNELS = 1
 GRID_COLS = 40
 GRID_ROWS = 32
 VALUES_PER_CELL = 5  # Model outputs: objectness, x offset, y offset, width, height
-TARGET_BACKGROUND_MASK_INDEX = VALUES_PER_CELL
+TARGET_BACKGROUND_MASK_INDEX = 5  # zero-based index of the extra target-only mask channel
 TARGET_CHANNELS = 6  # five model-output values plus target-only background eligibility mask
 MIN_PERSON_HEIGHT_PX = 24
 POSITIVE_LOSS_WEIGHT = 2.0
@@ -432,6 +432,9 @@ def load_split(
         "retained_ground_truth_boxes": totals["gt_boxes_retained"],
         "small_boxes_ignored": totals["small_gt_ignored"],
         "ground_truth_collision_drops": totals["gt_collision_drops"],
+        "background_cells_ignored_by_ground_truth_boxes": totals["background_cells_ignored_by_gt_boxes"],
+        "background_cells_ignored_by_teacher_pseudo_boxes": totals["background_cells_ignored_by_pseudo_boxes"],
+        "background_grid_cells_ignored": totals["background_grid_cells_ignored"],
         "pseudo_boxes_added": totals["pseudo_boxes_added"],
         "pseudo_boxes_overlapping_ground_truth": totals["pseudo_overlaps_gt"],
         "known_empty_images": totals["empty_images"],
