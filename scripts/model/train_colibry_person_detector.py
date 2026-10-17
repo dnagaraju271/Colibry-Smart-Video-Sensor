@@ -26,7 +26,7 @@ GRID_COLS = 40
 GRID_ROWS = 32
 VALUES_PER_CELL = 5  # Model outputs: objectness, x offset, y offset, width, height
 TARGET_BACKGROUND_MASK_INDEX = VALUES_PER_CELL
-TARGET_CHANNELS = VALUES_PER_CELL + 1  # extra target-only channel: 1=valid background, 0=ignore background loss
+TARGET_CHANNELS = 6  # five model-output values plus target-only background eligibility mask
 MIN_PERSON_HEIGHT_PX = 24
 POSITIVE_LOSS_WEIGHT = 2.0
 NEGATIVE_LOSS_WEIGHT = 1.0
