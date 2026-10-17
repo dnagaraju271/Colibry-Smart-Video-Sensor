@@ -175,12 +175,24 @@ def render_panel(
 def select_ids(records: list[dict[str, Any]], positive_count: int, empty_count: int) -> list[str]:
     positives = [r for r in records if r["gt_count"] > 0]
     empty = [r for r in records if r["gt_count"] == 0]
-    # Include positive frames with many false detections and many missed boxes.
+    # Interleave high-false-positive, high-miss, and high-prediction examples.
+    rankings = [
+        sorted(positives, key=lambda item: item["fp"], reverse=True),
+        sorted(positives, key=lambda item: item["fn"], reverse=True),
+        sorted(positives, key=lambda item: item["pred"], reverse=True),
+    ]
     chosen_pos: list[dict[str, Any]] = []
-    for key in ("fp", "fn", "pred"):
-        for record in sorted(positives, key=lambda item: item[key], reverse=True):
-            if record not in chosen_pos:
+    chosen_ids: set[str] = set()
+    max_rank = max((len(ranking) for ranking in rankings), default=0)
+    for rank in range(max_rank):
+        for ranking in rankings:
+            if rank >= len(ranking):
+                continue
+            record = ranking[rank]
+            image_id = record["image_id"]
+            if image_id not in chosen_ids:
                 chosen_pos.append(record)
+                chosen_ids.add(image_id)
                 if len(chosen_pos) >= positive_count:
                     break
         if len(chosen_pos) >= positive_count:
