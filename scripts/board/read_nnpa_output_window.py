@@ -121,15 +121,15 @@ def main() -> int:
             raise RuntimeError(
                 f"Output start address looks invalid ({ofmap_start}); refusing readback."
             )
-        if not valid_messages:
-            raise RuntimeError(
-                "No valid SCU message sample (expected 0, 5, or 10); "
-                "please rerun once to get a clean read."
-            )
-        if valid_messages[-1] != 0:
+        if valid_messages and valid_messages[-1] in (5, 10):
             raise RuntimeError(
                 f"Latest valid firmware message is {valid_messages[-1]}, not idle; "
                 "refusing readback."
+            )
+        if not valid_messages:
+            print(
+                "WARNING: SCU message reads returned no recognizable value "
+                "(possibly SPIS NOP echo); proceeding based on validated, idle NNPA status."
             )
 
         width, height, depth = decode_dims(size_reg)
