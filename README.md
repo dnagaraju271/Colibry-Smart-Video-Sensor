@@ -78,12 +78,12 @@ weights remain outside Git history.
 
 With the reference firmware already running and waiting for an input, send the
 prepacked 160 x 128 input over SPIS without resetting the board or rewriting
-flash. The following command uses sudo for FTDI access and saves the complete
+flash. The dedicated dump script saves the complete raw feature map. The following command uses sudo for FTDI access and saves the complete
 raw feature map for later comparison:
 
 ```bash
 sudo "$HOME/venvs/colibry-compiler/bin/python" \
-  "$HOME/Colibry-Smart-Video-Sensor/scripts/board/run_nnpa_packed_input_inference.py" \
+  "$HOME/Colibry-Smart-Video-Sensor/scripts/board/dump_nnpa_featuremap.py" \
   --sdk-root "$HOME/colibryNPU_SDK" \
   --input "$HOME/models/colibry_yolo/compression_trial/test_person_input_nnpa_packed.bin" \
   --output-dump "$HOME/models/colibry_yolo/compression_trial/nnpa_output_featuremap_raw.bin"
@@ -96,7 +96,7 @@ need to select a specific current FTDI URI. A successful inference confirms
 execution, not person-detection accuracy: the current YOLO backbone produces a
 feature map, and detection decoding is a separate step.
 
-See [the board inference script](scripts/board/run_nnpa_packed_input_inference.py).
+See [the board inference script](scripts/board/dump_nnpa_featuremap.py).
 
 ## Check a YOLO candidate for Colibry
 
