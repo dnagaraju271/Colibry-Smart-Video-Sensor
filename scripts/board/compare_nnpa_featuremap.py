@@ -36,9 +36,9 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=(
             Path.home()
-            / "models/colibry_yolo/compression_trial/nnpa_output_featuremap_raw.bin"
+            / "models/colibry_yolo/compression_trial/nnpa_output_memory_window4.bin"
         ),
-        help="Raw 20,480-byte output dumped from the NNPA.",
+        help="20,480-byte legacy output or 81,920-byte four-lane diagnostic window.",
     )
     parser.add_argument(
         "--model",
@@ -185,12 +185,17 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    if len(raw_bytes) != EXPECTED_OUTPUT_BYTES:
+    allowed_raw_lengths = (EXPECTED_OUTPUT_BYTES, EXPECTED_OUTPUT_BYTES * 4)
+    if len(raw_bytes) not in allowed_raw_lengths:
         print(
-            f"ERROR: NNPA output should be {EXPECTED_OUTPUT_BYTES} bytes, got {len(raw_bytes)}.",
+            "ERROR: output file should contain either "
+            f"{EXPECTED_OUTPUT_BYTES} bytes (legacy tensor dump) or "
+            f"{EXPECTED_OUTPUT_BYTES * 4} bytes (four-lane diagnostic window); "
+            f"got {len(raw_bytes)}.",
             file=sys.stderr,
         )
         return 2
+    diagnostic_window = len(raw_bytes) == EXPECTED_OUTPUT_BYTES * 4
 
     try:
         import onnxruntime as ort
@@ -212,11 +217,8 @@ def main() -> int:
         )
         return 4
 
-    # Model input is float [1,3,128,160] with values normalized to [0,1].
     input_u8 = np.frombuffer(input_bytes, dtype=np.uint8).reshape(1, 3, 128, 160)
     model_input = input_u8.astype(np.float32) / 255.0
-    raw_output_u8 = np.frombuffer(raw_bytes, dtype=np.uint8)
-    hardware_float = (raw_output_u8.astype(np.float32) - zero_point) * scale
 
     try:
         session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
@@ -243,9 +245,6 @@ def main() -> int:
         )
         return 5
 
-    # The ONNX graph is NCHW [1,64,16,20]. NNPA size registers describe
-    # width=20, height=16, depth=64, so test HWC linear order first, and also
-    # report NCHW linear order to help diagnose a memory-layout mismatch.
     if reference.ndim == 4 and reference.shape == (1, 64, 16, 20):
         reference_hwc = reference.transpose(0, 2, 3, 1).reshape(-1)
         reference_nchw = reference.reshape(-1)
@@ -256,78 +255,99 @@ def main() -> int:
         reference_hwc = reference.reshape(-1)
         reference_nchw = reference.reshape(-1)
 
-    hwc_metrics = summarize(hardware_float, reference_hwc)
-    nchw_metrics = summarize(hardware_float, reference_nchw)
-
-    # Reconstruct the expected 8-bit quantized output values from the float
-    # ONNX output. This distribution is invariant to memory layout and helps
-    # diagnose raw-buffer corruption/packing separately from channel ordering.
-    expected_codes = np.clip(
-        np.rint(reference.reshape(-1) / scale + zero_point), 0, 255
+    expected_codes_hwc = np.clip(
+        np.rint(reference_hwc / scale + zero_point), 0, 255
     ).astype(np.uint8)
-    raw_codes = raw_output_u8
-    raw_below_zp = float(np.mean(raw_codes < zero_point))
-    expected_below_zp = float(np.mean(expected_codes < zero_point))
+    expected_codes_nchw = np.clip(
+        np.rint(reference_nchw / scale + zero_point), 0, 255
+    ).astype(np.uint8)
 
-    raw_hist = np.bincount(raw_codes, minlength=256)
-    expected_hist = np.bincount(expected_codes, minlength=256)
-    raw_common = sorted(
-        ((int(count), int(value)) for value, count in enumerate(raw_hist)),
-        reverse=True
-    )[:8]
-    expected_common = sorted(
-        ((int(count), int(value)) for value, count in enumerate(expected_hist)),
-        reverse=True
-    )[:8]
-
-    raw_code_hwc = summarize(raw_codes, expected_codes)
     print("========== NNPA vs ONNX REFERENCE ==========")
     print(f"ONNX model:                     {model_path}")
     print(f"ONNX Runtime:                  {ort.__version__}")
     print(f"Input tensor shape:             {tuple(model_input.shape)}")
     print(f"Reference output shape:         {tuple(reference.shape)}")
-    print(f"Raw NNPA output bytes:           {len(raw_bytes)}")
+    print(f"Saved output bytes:             {len(raw_bytes)}")
+    print(f"Raw memory interpretation:      {'four lanes / 4-byte element hypothesis' if diagnostic_window else 'legacy one-byte-per-element capture'}")
     print(f"Output quantization source:      {q_source}")
-    print(f"Output dequantization formula:   (raw - {zero_point}) * {scale:.10g}")
-    print(f"NNPA dequantized min/max:        {hardware_float.min():.8g} / {hardware_float.max():.8g}")
+    print(f"Output quantization:             scale={scale:.10g}, zero_point={zero_point}")
     print(f"ONNX reference min/max:          {reference.min():.8g} / {reference.max():.8g}")
     print(f"ONNX reference mean/std:         {reference.mean():.8g} / {reference.std():.8g}")
-    print("--- Raw quantized byte diagnostic ---")
     print(
-        f"Raw NNPA codes min/max/mean/std: "
-        f"{int(raw_codes.min())} / {int(raw_codes.max())} / "
-        f"{raw_codes.mean():.5g} / {raw_codes.std():.5g}"
+        f"Expected quantized code range:   {int(min(expected_codes_hwc.min(), expected_codes_nchw.min()))} "
+        f".. {int(max(expected_codes_hwc.max(), expected_codes_nchw.max()))}"
     )
-    print(
-        f"Expected ONNX codes min/max/mean/std: "
-        f"{int(expected_codes.min())} / {int(expected_codes.max())} / "
-        f"{expected_codes.mean():.5g} / {expected_codes.std():.5g}"
-    )
-    print(
-        f"Fraction of raw codes below zero-point ({zero_point}): "
-        f"{raw_below_zp:.3%}"
-    )
-    print(
-        f"Fraction of expected codes below zero-point ({zero_point}): "
-        f"{expected_below_zp:.3%}"
-    )
-    print(f"Most frequent raw code/count pairs:      {raw_common}")
-    print(f"Most frequent expected code/count pairs: {expected_common}")
-    print(
-        f"Raw-vs-expected code stats (unreordered): "
-        f"MAE={raw_code_hwc['mae']:.5g}, "
-        f"RMSE={raw_code_hwc['rmse']:.5g}, "
-        f"corr={raw_code_hwc['correlation']:.6f}"
-    )
-    print("--- Candidate output layouts ---")
-    for name, metrics in (("HWC (register width-height-depth)", hwc_metrics),
-                          ("NCHW (ONNX native flatten)", nchw_metrics)):
-        print(
-            f"{name}: MAE={metrics['mae']:.8g}, RMSE={metrics['rmse']:.8g}, "
-            f"max_abs={metrics['max_abs']:.8g}, corr={metrics['correlation']:.6f}, "
-            f"cosine={metrics['cosine']:.6f}"
+
+    if diagnostic_window:
+        lanes = np.frombuffer(raw_bytes, dtype=np.uint8).reshape(EXPECTED_OUTPUT_BYTES, 4)
+        lane_results = []
+        print("--- Four-byte lane diagnostic (no layout assumed) ---")
+        for lane in range(4):
+            codes = lanes[:, lane]
+            dequant = (codes.astype(np.float32) - zero_point) * scale
+            hist = np.bincount(codes, minlength=256)
+            common = sorted(
+                ((int(count), int(value)) for value, count in enumerate(hist)),
+                reverse=True,
+            )[:5]
+            stats = {
+                "lane": lane,
+                "min": int(codes.min()),
+                "max": int(codes.max()),
+                "mean": float(codes.mean()),
+                "std": float(codes.std()),
+                "below_zp": float(np.mean(codes < zero_point)),
+                "hwc": summarize(dequant, reference_hwc),
+                "nchw": summarize(dequant, reference_nchw),
+                "codes_hwc": summarize(codes, expected_codes_hwc),
+                "codes_nchw": summarize(codes, expected_codes_nchw),
+                "common": common,
+            }
+            lane_results.append(stats)
+            print(
+                f"Lane {lane} stats min/max/mean/std: "
+                f"{stats['min']}/{stats['max']}/{stats['mean']:.5g}/{stats['std']:.5g}; "
+                f"below zero-point={stats['below_zp']:.3%}"
+            )
+            print(f"  Frequent codes: {common}")
+            print(
+                f"  vs HWC ref: MAE={stats['hwc']['mae']:.6g}, "
+                f"RMSE={stats['hwc']['rmse']:.6g}, "
+                f"corr={stats['hwc']['correlation']:.6f}; "
+                f"quant-code MAE={stats['codes_hwc']['mae']:.5g}"
+            )
+            print(
+                f"  vs NCHW ref: MAE={stats['nchw']['mae']:.6g}, "
+                f"RMSE={stats['nchw']['rmse']:.6g}, "
+                f"corr={stats['nchw']['correlation']:.6f}; "
+                f"quant-code MAE={stats['codes_nchw']['mae']:.5g}"
+            )
+        best = min(
+            lane_results,
+            key=lambda x: min(x["hwc"]["rmse"], x["nchw"]["rmse"])
         )
-    print("Quantization parameters came from the ONNX final DequantizeLinear node.")
+        print(
+            f"Best single-lane candidate by RMSE: lane {best['lane']} "
+            f"(HWC RMSE={best['hwc']['rmse']:.6g}, "
+            f"NCHW RMSE={best['nchw']['rmse']:.6g})."
+        )
+        print(
+            "Lane selection is diagnostic only; it does not establish the NNPA's "
+            "documented output format."
+        )
+    else:
+        raw_codes = np.frombuffer(raw_bytes, dtype=np.uint8)
+        hardware_float = (raw_codes.astype(np.float32) - zero_point) * scale
+        hwc_metrics = summarize(hardware_float, reference_hwc)
+        nchw_metrics = summarize(hardware_float, reference_nchw)
+        print("--- Legacy flat-byte comparison ---")
+        for name, metrics in (("HWC", hwc_metrics), ("NCHW", nchw_metrics)):
+            print(
+                f"{name}: MAE={metrics['mae']:.8g}, RMSE={metrics['rmse']:.8g}, "
+                f"max_abs={metrics['max_abs']:.8g}, corr={metrics['correlation']:.6f}, "
+                f"cosine={metrics['cosine']:.6f}"
+            )
+
     print("No detection accuracy is inferred from this comparison alone.")
     print("=============================================")
     return 0
