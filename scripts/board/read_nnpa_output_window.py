@@ -52,6 +52,14 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional explicit PyFTDI URI, e.g. ftdi://ftdi:4232hp:3:4/2.",
     )
+    parser.add_argument(
+        "--allow-large-burst",
+        action="store_true",
+        help=(
+            "Permit the 81,920-byte diagnostic DMA burst. Keep disabled until "
+            "the SDK DMA length limit and completion behavior have been verified."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -96,6 +104,7 @@ def main() -> int:
             time.sleep(0.02)
 
         valid_messages = [value for value in msg_samples if value in (0, 5, 10)]
+        firmware_message = valid_messages[-1] if valid_messages else None
         print("========== READ-ONLY NNPA REGISTER SNAPSHOT ==========")
         print(f"Status samples:          0x{status:08X}")
         print(f"Inference counter:       {counter}")
@@ -149,10 +158,21 @@ def main() -> int:
                 f"exceeds NNPA memory end 0x{memory_end:08X}."
             )
 
+        if not args.allow_large_burst:
+            print("SAFE STOP: register checks passed, but the large DMA burst is disabled.")
+            print(
+                "Verify the SDK DMA length limit and burst-finalization path before "
+                "rerunning with --allow-large-burst."
+            )
+            return 5
+
         print("========== READ-ONLY NNPA OUTPUT WINDOW ==========")
         print(f"Inference counter:      {counter}")
         print(f"NNPA status:            0x{status:08X}")
-        print(f"Firmware message:       {msg}")
+        print(
+            "Firmware message:       "
+            + (str(firmware_message) if firmware_message is not None else "unknown")
+        )
         print(f"Output start word:      {ofmap_start}")
         print(f"Output size register:   0x{size_reg:08X}")
         print(f"Decoded shape:          [{height}, {width}, {depth}]")
