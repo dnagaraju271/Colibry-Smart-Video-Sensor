@@ -74,6 +74,29 @@ for dataset format, the pre-training validation command, model outputs, and the
 limits of the validation metrics. Dataset images, teacher caches, and generated
 weights remain outside Git history.
 
+## Run a packed input on the Colibry board
+
+With the reference firmware already running and waiting for an input, send the
+prepacked 160 x 128 input over SPIS without resetting the board or rewriting
+flash:
+
+```bash
+"$HOME/venvs/colibry-compiler/bin/python" \
+  "$HOME/Colibry-Smart-Video-Sensor/scripts/board/run_nnpa_packed_input_inference.py" \
+  --sdk-root "$HOME/colibryNPU_SDK" \
+  --input "$HOME/models/colibry_yolo/compression_trial/test_person_input_nnpa_packed.bin"
+```
+
+The script reads the NNPA input address and size from the live registers, sends
+the packed input, requests one inference, and reports the inference counter,
+status, and firmware result message. It does not flash or restart the board.
+Use `--port ftdi://...` only when you need to select a specific current FTDI
+URI. A successful inference confirms execution, not person-detection accuracy:
+the current YOLO backbone produces a feature map, and detection decoding is a
+separate step.
+
+See [the board inference script](scripts/board/run_nnpa_packed_input_inference.py).
+
 ## Check a YOLO candidate for Colibry
 
 Use the configuration-driven compatibility inspector to examine a model's
