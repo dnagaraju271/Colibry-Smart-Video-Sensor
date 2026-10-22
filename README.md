@@ -98,18 +98,37 @@ feature map, and detection decoding is a separate step.
 
 See [the board inference script](scripts/board/dump_nnpa_featuremap.py).
 
+## Diagnose NNPA output memory lanes
+
+The flat output capture had a strong byte-stride pattern, so inspect a larger
+read-only memory window at the current output address before assuming a tensor
+layout. This reads memory only; it does not trigger inference, reset the CPU,
+or write flash. Run it while firmware is idle:
+
+```bash
+sudo "$HOME/venvs/colibry-compiler/bin/python" \
+  "$HOME/Colibry-Smart-Video-Sensor/scripts/board/read_nnpa_output_window.py" \
+  --sdk-root "$HOME/colibryNPU_SDK" \
+  --output "$HOME/models/colibry_yolo/compression_trial/nnpa_output_memory_window4.bin"
+```
+
+The diagnostic reads four bytes per logical output element as a hypothesis
+and saves the 81,920-byte window. The byte lanes are candidates to inspect, not
+a declaration of the documented output layout.
+
 ## Compare NNPA output with the ONNX reference
 
-After saving `nnpa_output_featuremap_raw.bin`, compare the accelerator feature
+After saving `nnpa_output_memory_window4.bin`, compare the accelerator feature
 map with ONNX Runtime using the exact same input tensor. The utility reads
 scale and zero-point from the ONNX model's final `DequantizeLinear` node. It
-does not connect to the board, trigger inference, or modify flash:
+does not connect to the board, trigger inference, or modify flash. It evaluates
+four candidate byte lanes if the supplied output file is 81,920 bytes:
 
 ```bash
 "$HOME/venvs/colibry-compiler/bin/python" \
   "$HOME/Colibry-Smart-Video-Sensor/scripts/board/compare_nnpa_featuremap.py" \
   --input "$HOME/models/colibry_yolo/compression_trial/test_person_input_nchw_u8.bin" \
-  --raw-output "$HOME/models/colibry_yolo/compression_trial/nnpa_output_featuremap_raw.bin" \
+  --raw-output "$HOME/models/colibry_yolo/compression_trial/nnpa_output_memory_window4.bin" \
   --model "$HOME/models/colibry_yolo/compression_trial/yolov8n_layer4_qdq_conv_add_int8_terminal.onnx"
 ```
 
