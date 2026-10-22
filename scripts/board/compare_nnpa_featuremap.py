@@ -23,12 +23,6 @@ def parse_args() -> argparse.Namespace:
         description="Compare NNPA raw feature-map bytes with an ONNX Runtime reference."
     )
     parser.add_argument(
-        "--sdk-root",
-        type=Path,
-        default=Path.home() / "colibryNPU_SDK",
-        help="Local ColibryNPU SDK root (default: ~/colibryNPU_SDK).",
-    )
-    parser.add_argument(
         "--input",
         type=Path,
         default=(
