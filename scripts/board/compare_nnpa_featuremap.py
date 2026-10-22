@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Compare a saved Colibry NNPA feature map against ONNX Runtime output.
 
-The script does not trigger inference or write to the board. By default it reads
-the output quantization registers from the live board over SPIS, then runs the
-same input through the supplied reference ONNX model and compares both output
-orders. The NNPA raw file must have been captured from this same input/model.
+Output quantization is read from the model's final DequantizeLinear node, not
+from live board registers. This avoids interpreting an invalid SPIS read as a
+scale. This script does not access or modify the board.
 """
 
 from __future__ import annotations
@@ -15,9 +14,6 @@ from pathlib import Path
 
 import numpy as np
 
-NNPA_REG_BASE = 0x30000000
-REG_OUTPUT_SCALING = 0x4C
-REG_OUTPUT_OFFSET = 0x50
 EXPECTED_INPUT_BYTES = 3 * 128 * 160
 EXPECTED_OUTPUT_BYTES = 64 * 16 * 20
 
@@ -60,72 +56,94 @@ def parse_args() -> argparse.Namespace:
         ),
         help="Float-input ONNX reference model.",
     )
-    parser.add_argument(
-        "--port",
-        default=None,
-        help="Optional FTDI URI for SPIS, e.g. ftdi://ftdi:4232hp:3:4/2.",
-    )
-    parser.add_argument(
-        "--output-scale",
-        type=float,
-        default=None,
-        help="Optional scale override; if set with zero-point, avoids board register reads.",
-    )
-    parser.add_argument(
-        "--output-zero-point",
-        type=int,
-        default=None,
-        help="Optional zero-point override; must be paired with --output-scale.",
-    )
     return parser.parse_args()
 
 
-def load_output_quantization(args: argparse.Namespace) -> tuple[float, int, str]:
-    if (args.output_scale is None) != (args.output_zero_point is None):
-        raise ValueError("--output-scale and --output-zero-point must be provided together.")
+def load_output_quantization(model_path: Path) -> tuple[float, int, str]:
+    """Read per-tensor quantization parameters for the graph's final DQ output."""
+    try:
+        import onnx
+        from onnx import numpy_helper
+    except ImportError as exc:
+        raise RuntimeError(
+            "The 'onnx' package is required to read the model's Q/DQ parameters."
+        ) from exc
 
-    if args.output_scale is not None:
-        scale = float(args.output_scale)
-        zero_point = int(args.output_zero_point)
-        source = "command-line override"
-    else:
-        sdk_root = args.sdk_root.expanduser()
-        candidates = (
-            sdk_root / "riscv_runtime" / "tools",
-            sdk_root / "tools",
+    model = onnx.load(str(model_path))
+    if not model.graph.output:
+        raise ValueError("ONNX graph has no declared outputs.")
+
+    output_name = model.graph.output[0].name
+    dq = next(
+        (
+            node for node in model.graph.node
+            if node.op_type == "DequantizeLinear" and output_name in node.output
+        ),
+        None,
+    )
+    if dq is None:
+        raise ValueError(
+            f"Graph output {output_name!r} is not produced directly by "
+            "DequantizeLinear; cannot safely infer output quantization."
         )
-        for candidate in candidates:
-            if (candidate / "colibry_interfaces" / "colibry_spis_api.py").is_file():
-                sys.path.insert(0, str(candidate))
-                break
-        else:
-            raise FileNotFoundError(
-                "Could not locate colibry_interfaces/colibry_spis_api.py under "
-                f"{sdk_root}"
+    if len(dq.input) < 2:
+        raise ValueError("Final DequantizeLinear node has no scale input.")
+
+    initializers = {
+        tensor.name: numpy_helper.to_array(tensor)
+        for tensor in model.graph.initializer
+    }
+    constant_nodes = {
+        output: node
+        for node in model.graph.node if node.op_type == "Constant"
+        for output in node.output
+    }
+
+    def constant_value(name: str):
+        if name in initializers:
+            return initializers[name]
+        node = constant_nodes.get(name)
+        if node is not None:
+            for attr in node.attribute:
+                if attr.name == "value" and attr.HasField("t"):
+                    return numpy_helper.to_array(attr.t)
+        return None
+
+    scale_array = constant_value(dq.input[1])
+    if scale_array is None:
+        raise ValueError(
+            f"Cannot find constant scale tensor {dq.input[1]!r} for final DQ."
+        )
+    scale_array = np.asarray(scale_array)
+    if scale_array.size != 1:
+        raise ValueError(
+            f"Final DQ scale has {scale_array.size} values; per-channel output "
+            "quantization is not handled by this diagnostic."
+        )
+    scale = float(scale_array.reshape(-1)[0])
+
+    if len(dq.input) >= 3 and dq.input[2]:
+        zero_array = constant_value(dq.input[2])
+        if zero_array is None:
+            raise ValueError(
+                f"Cannot find constant zero-point tensor {dq.input[2]!r} for final DQ."
             )
-
-        from colibry_interfaces.colibry_spis_api import Colibry_spis_api
-
-        # Read-only register access; no inference trigger, reset, or flash write.
-        ll = Colibry_spis_api(freq=1_000_000, channel=2, p=args.port)
-        scale_reg = ll.mmap_read(NNPA_REG_BASE + REG_OUTPUT_SCALING)
-        offset_reg = ll.mmap_read(NNPA_REG_BASE + REG_OUTPUT_OFFSET)
-        scale = scale_reg / 65536.0
-        # Match the SDK reference code: int16_t(output_offset_register >> 8).
-        zero_point = (offset_reg >> 8) & 0xFFFF
-        if zero_point >= 0x8000:
-            zero_point -= 0x10000
-        source = (
-            f"live board registers (scaling=0x{scale_reg:08X}, "
-            f"offset=0x{offset_reg:08X})"
-        )
+        zero_array = np.asarray(zero_array)
+        if zero_array.size != 1:
+            raise ValueError(
+                f"Final DQ zero-point has {zero_array.size} values; expected one."
+            )
+        zero_point = int(zero_array.reshape(-1)[0])
+    else:
+        zero_point = 0
 
     if not np.isfinite(scale) or scale <= 0:
         raise ValueError(f"Invalid output quantization scale: {scale}")
-    if zero_point < -32768 or zero_point > 32767:
-        raise ValueError(f"Invalid signed 16-bit output zero point: {zero_point}")
-    return scale, zero_point, source
-
+    return scale, zero_point, (
+        f"ONNX final DequantizeLinear node {dq.name or '(unnamed)'} "
+        f"(scale tensor={dq.input[1]!r}, zero-point tensor="
+        f"{dq.input[2] if len(dq.input) >= 3 else '(default 0)'!r})"
+    )
 
 def summarize(candidate: np.ndarray, reference: np.ndarray) -> dict[str, float]:
     delta = candidate.astype(np.float64) - reference.astype(np.float64)
@@ -191,7 +209,7 @@ def main() -> int:
         return 3
 
     try:
-        scale, zero_point, q_source = load_output_quantization(args)
+        scale, zero_point, q_source = load_output_quantization(model_path)
     except Exception as exc:
         print(
             f"ERROR: unable to determine output quantization: "
@@ -204,7 +222,7 @@ def main() -> int:
     input_u8 = np.frombuffer(input_bytes, dtype=np.uint8).reshape(1, 3, 128, 160)
     model_input = input_u8.astype(np.float32) / 255.0
     raw_output_u8 = np.frombuffer(raw_bytes, dtype=np.uint8)
-    hardware_float = (raw_output_u8.astype(np.float32) + zero_point) * scale
+    hardware_float = (raw_output_u8.astype(np.float32) - zero_point) * scale
 
     try:
         session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
@@ -254,7 +272,7 @@ def main() -> int:
     print(f"Reference output shape:         {tuple(reference.shape)}")
     print(f"Raw NNPA output bytes:           {len(raw_bytes)}")
     print(f"Output quantization source:      {q_source}")
-    print(f"Output dequantization formula:   (raw + {zero_point}) * {scale:.10g}")
+    print(f"Output dequantization formula:   (raw - {zero_point}) * {scale:.10g}")
     print(f"NNPA dequantized min/max:        {hardware_float.min():.8g} / {hardware_float.max():.8g}")
     print(f"ONNX reference min/max:          {reference.min():.8g} / {reference.max():.8g}")
     print(f"ONNX reference mean/std:         {reference.mean():.8g} / {reference.std():.8g}")
@@ -266,6 +284,7 @@ def main() -> int:
             f"max_abs={metrics['max_abs']:.8g}, corr={metrics['correlation']:.6f}, "
             f"cosine={metrics['cosine']:.6f}"
         )
+    print("Quantization parameters came from the ONNX final DequantizeLinear node.")
     print("No detection accuracy is inferred from this comparison alone.")
     print("=============================================")
     return 0
