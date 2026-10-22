@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import sys
+import time
 from pathlib import Path
 
 NNPA_REG_BASE = 0x30000000
@@ -80,24 +81,63 @@ def main() -> int:
         from colibry_interfaces.colibry_spis_api import Colibry_spis_api
         ll = Colibry_spis_api(freq=1_000_000, channel=2, p=args.port)
 
+        # Read the accelerator registers first and reject the known SPIS NOP
+        # sentinel if it appears where a register value should be. The SCU message
+        # read has been observed to sporadically return 0xF8000000 (SPIS NOP),
+        # so sample it repeatedly instead of treating that sentinel as real data.
         status = ll.mmap_read(NNPA_REG_BASE + REG_STATUS)
         counter = ll.mmap_read(NNPA_REG_BASE + REG_INFERENCE_COUNTER)
         ofmap_start = ll.mmap_read(NNPA_REG_BASE + REG_OFMAP_START_MADDR)
         size_reg = ll.mmap_read(NNPA_REG_BASE + REG_OFMAP_SIZE)
-        msg = ll.mmap_read(SCU_CORE_MSG0_ADDR)
 
-        if status & 1:
+        msg_samples = []
+        for _ in range(4):
+            msg_samples.append(ll.mmap_read(SCU_CORE_MSG0_ADDR))
+            time.sleep(0.02)
+
+        valid_messages = [value for value in msg_samples if value in (0, 5, 10)]
+        print("========== READ-ONLY NNPA REGISTER SNAPSHOT ==========")
+        print(f"Status samples:          0x{status:08X}")
+        print(f"Inference counter:       {counter}")
+        print(f"Output start word:       {ofmap_start}")
+        print(f"Output size register:    0x{size_reg:08X}")
+        print("SCU message samples:     " + ", ".join(f"0x{x:08X}" for x in msg_samples))
+        print("======================================================")
+
+        if (status & 0x1) != 0:
             raise RuntimeError(
                 f"NNPA status indicates busy (0x{status:08X}); refusing readback."
             )
-        if msg != 0:
+        if (status & 0x6) != 0x6:
             raise RuntimeError(
-                f"Firmware message is not idle (0x{msg:08X}); refusing readback."
+                f"NNPA status does not show expected ready bits (0x{status:08X}); "
+                "register read may be invalid, refusing readback."
             )
-        if ofmap_start == 0:
-            raise RuntimeError("Output start register is zero; refusing readback.")
+        if counter > 1_000_000:
+            raise RuntimeError(
+                f"Inference counter looks invalid ({counter}); refusing readback."
+            )
+        if not ofmap_start or ofmap_start > 40959:
+            raise RuntimeError(
+                f"Output start address looks invalid ({ofmap_start}); refusing readback."
+            )
+        if not valid_messages:
+            raise RuntimeError(
+                "No valid SCU message sample (expected 0, 5, or 10); "
+                "please rerun once to get a clean read."
+            )
+        if valid_messages[-1] != 0:
+            raise RuntimeError(
+                f"Latest valid firmware message is {valid_messages[-1]}, not idle; "
+                "refusing readback."
+            )
 
         width, height, depth = decode_dims(size_reg)
+        if (width, height, depth) != (20, 16, 64):
+            raise RuntimeError(
+                f"Unexpected output dimensions {width}x{height}x{depth}; "
+                "refusing the four-lane diagnostic."
+            )
         elements = width * height * depth
         window_bytes = elements * 4
         addr = NNPAMEM_BASE + ofmap_start * NNPA_BYTES_PER_MEM_WORD
