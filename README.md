@@ -101,14 +101,13 @@ See [the board inference script](scripts/board/dump_nnpa_featuremap.py).
 ## Compare NNPA output with the ONNX reference
 
 After saving `nnpa_output_featuremap_raw.bin`, compare the accelerator feature
-map with ONNX Runtime using the exact same input tensor. This utility reads the
-current output quantization registers over SPIS; it does not trigger another
-inference or modify flash:
+map with ONNX Runtime using the exact same input tensor. The utility reads
+scale and zero-point from the ONNX model's final `DequantizeLinear` node. It
+does not connect to the board, trigger inference, or modify flash:
 
 ```bash
-sudo "$HOME/venvs/colibry-compiler/bin/python" \
+"$HOME/venvs/colibry-compiler/bin/python" \
   "$HOME/Colibry-Smart-Video-Sensor/scripts/board/compare_nnpa_featuremap.py" \
-  --sdk-root "$HOME/colibryNPU_SDK" \
   --input "$HOME/models/colibry_yolo/compression_trial/test_person_input_nchw_u8.bin" \
   --raw-output "$HOME/models/colibry_yolo/compression_trial/nnpa_output_featuremap_raw.bin" \
   --model "$HOME/models/colibry_yolo/compression_trial/yolov8n_layer4_qdq_conv_add_int8_terminal.onnx"
@@ -117,7 +116,8 @@ sudo "$HOME/venvs/colibry-compiler/bin/python" \
 It reports scale/zero-point, output ranges, and numerical comparison metrics
 for HWC and NCHW flattening. A large discrepancy can indicate input preprocessing,
 quantization, memory-ordering, or compiler/runtime differences; it is not by
-itself proof of a defective accelerator.
+itself proof of a defective accelerator. The comparison environment needs
+`onnxruntime`, `onnx`, and `numpy`.
 
 See [the comparison script](scripts/board/compare_nnpa_featuremap.py).
 
