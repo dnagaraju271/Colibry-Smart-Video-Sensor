@@ -259,6 +259,28 @@ def main() -> int:
     hwc_metrics = summarize(hardware_float, reference_hwc)
     nchw_metrics = summarize(hardware_float, reference_nchw)
 
+    # Reconstruct the expected 8-bit quantized output values from the float
+    # ONNX output. This distribution is invariant to memory layout and helps
+    # diagnose raw-buffer corruption/packing separately from channel ordering.
+    expected_codes = np.clip(
+        np.rint(reference.reshape(-1) / scale + zero_point), 0, 255
+    ).astype(np.uint8)
+    raw_codes = raw_output_u8
+    raw_below_zp = float(np.mean(raw_codes < zero_point))
+    expected_below_zp = float(np.mean(expected_codes < zero_point))
+
+    raw_hist = np.bincount(raw_codes, minlength=256)
+    expected_hist = np.bincount(expected_codes, minlength=256)
+    raw_common = sorted(
+        ((int(count), int(value)) for value, count in enumerate(raw_hist)),
+        reverse=True
+    )[:8]
+    expected_common = sorted(
+        ((int(count), int(value)) for value, count in enumerate(expected_hist)),
+        reverse=True
+    )[:8]
+
+    raw_code_hwc = summarize(raw_codes, expected_codes)
     print("========== NNPA vs ONNX REFERENCE ==========")
     print(f"ONNX model:                     {model_path}")
     print(f"ONNX Runtime:                  {ort.__version__}")
@@ -270,6 +292,33 @@ def main() -> int:
     print(f"NNPA dequantized min/max:        {hardware_float.min():.8g} / {hardware_float.max():.8g}")
     print(f"ONNX reference min/max:          {reference.min():.8g} / {reference.max():.8g}")
     print(f"ONNX reference mean/std:         {reference.mean():.8g} / {reference.std():.8g}")
+    print("--- Raw quantized byte diagnostic ---")
+    print(
+        f"Raw NNPA codes min/max/mean/std: "
+        f"{int(raw_codes.min())} / {int(raw_codes.max())} / "
+        f"{raw_codes.mean():.5g} / {raw_codes.std():.5g}"
+    )
+    print(
+        f"Expected ONNX codes min/max/mean/std: "
+        f"{int(expected_codes.min())} / {int(expected_codes.max())} / "
+        f"{expected_codes.mean():.5g} / {expected_codes.std():.5g}"
+    )
+    print(
+        f"Fraction of raw codes below zero-point ({zero_point}): "
+        f"{raw_below_zp:.3%}"
+    )
+    print(
+        f"Fraction of expected codes below zero-point ({zero_point}): "
+        f"{expected_below_zp:.3%}"
+    )
+    print(f"Most frequent raw code/count pairs:      {raw_common}")
+    print(f"Most frequent expected code/count pairs: {expected_common}")
+    print(
+        f"Raw-vs-expected code stats (unreordered): "
+        f"MAE={raw_code_hwc['mae']:.5g}, "
+        f"RMSE={raw_code_hwc['rmse']:.5g}, "
+        f"corr={raw_code_hwc['correlation']:.6f}"
+    )
     print("--- Candidate output layouts ---")
     for name, metrics in (("HWC (register width-height-depth)", hwc_metrics),
                           ("NCHW (ONNX native flatten)", nchw_metrics)):
