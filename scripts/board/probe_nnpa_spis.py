@@ -71,15 +71,28 @@ def main() -> int:
             formatted = ", ".join(f"0x{value:08X}" for value in values)
             print(f"{label:20s} @ 0x{address:08X}: {formatted}")
 
-        all_nop = all(
-            value == SPIS_NOP_PATTERN
-            for values in all_values.values()
-            for value in values
-        )
+        flattened_values = [
+            value for values in all_values.values() for value in values
+        ]
+        all_nop = all(value == SPIS_NOP_PATTERN for value in flattened_values)
+        all_ones = all(value == 0xFFFFFFFF for value in flattened_values)
+
         if all_nop:
             print("RESULT: INVALID READBACK — every register returned 0xF8000000.")
             print("This is the SPIS NOP pattern, not valid values for these registers.")
             print("Do not run the output-window dump until communication is restored.")
+            return 3
+
+        if all_ones:
+            print("RESULT: INVALID READBACK — every register returned 0xFFFFFFFF.")
+            print(
+                "This is consistent with an absent/unresponsive SPIS responder or "
+                "MISO being read high; it is not valid register data."
+            )
+            print(
+                "Check which firmware is running and the board's power/boot state "
+                "before any further SPIS operation."
+            )
             return 3
 
         status_values = all_values["NNPA status"]
