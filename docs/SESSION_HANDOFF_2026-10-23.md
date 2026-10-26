@@ -376,3 +376,23 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Before changing firmware, inspect SPIS DMA setup/finalize source and actual status-bit definitions/ISR branches from the currently built Hello World target. Next collect the exact surrounding code via `sed -n '120,225p' .../spis_protocol.c`, `sed -n '65,100p' .../examples/20_hello_world/main.c`, and `grep -RInE 'DMA.*(DONE|ERROR|STATUS|ERR)|.*DMA.*STATUS' ... --include='*.h' --include='*.c'`.
 - The key question is whether only DMA done status invokes `spis_burst_finalize()` while DMA read/write error status leaves SPIS in DMA mode or receive interrupts disabled. This is a hypothesis until source is reviewed.
 - No board commands were run after the last read-only probe returned NOP sentinels. Do not run further SPIS or inference attempts until the source has been reviewed and a recovery/fix plan is made.
+
+
+## SESSION UPDATE — 2026-10-26: DMA ISR and finalizer source inspection
+
+### Source findings from Ubuntu SDK
+- `components_drivers/SPIS_PROTOCOL/spis_protocol.c` burst setup sets:
+  - DMA length to requested bytes minus one;
+  - SPIS DMA mode to 1;
+  - DMA interrupt enable register to `(1 << alloc_dma_channel)`;
+  - then clears current opcode/argument count.
+- `spis_burst_finalize()` contains an unbounded wait:
+  `while (spis_tx_fifo_empty == 0 || spis_busy != 0) { delay_us(1); }`
+  followed by `spis_dma_mode = 0` and re-enabling SPIS RX IRQ.
+- Hello World `main.c` DMA handler only checks `dma_int_status.word & (1 << SPIS_DMA_CHANNEL)`; if set, it clears that same bit and calls `spis_burst_finalize()`. It separately checks image RX DMA completion. No explicit SPIS DMA read/write error path is shown in the current handler.
+- SDK header `colibry_drivers/DMA/includes/dma_mmap.h` defines three status fields/masks: `DMA_EVT_DONE_MASK=0x000000ff`, `DMA_EVT_READ_ERROR_MASK=0x0000ff00`, `DMA_EVT_WRITE_ERROR_MASK=0x00ff0000`. Thus the current ISR's `1 << channel` condition appears to target DONE bits only. Error handling omission and the unbounded finalizer loop are concrete risks.
+- Given the sequence—healthy SPIS before output read, one 32-byte burst returns data, then all later reads are `SPIS_NOP_OPCODE 0xF8000000`—a DMA error or finalization wait is now a strong hypothesis, but not yet confirmed. Do not declare root cause until host burst transaction and exact bitfield semantics have been inspected.
+- Next inspect:
+  1. `sed -n '100,190p' ~/colibryNPU_SDK/riscv_runtime/tools/colibry_interfaces/colibry_spis_api.py` plus `grep -n -A70 -B10 'def mmap_readburst' ...` to inspect what SPI commands/CS framing host sends and the units of its `size` argument.
+  2. `sed -n '35,140p' ~/colibryNPU_SDK/colibry_drivers/DMA/includes/dma_mmap.h` and `sed -n '105,145p' ...` to verify exact interrupt-status bitfield order.
+- Do not make a firmware source change yet; first confirm the API's burst protocol and bit definitions. Vendor firmware resides in the local SDK and must be deliberately incorporated into a reproducible project patch/build workflow before patching. No board operation/flash operation was performed during source review.
