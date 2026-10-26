@@ -322,3 +322,11 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Crucially, `--skip-output-read` reports no output burst-read was issued. This is a clean inference-only pass.
 - Next: perform exactly one read-only SPIS health probe on `ftdi://ftdi:4232hp:3:2/2`. If metadata reads are healthy, then attempt the new single 32-byte output chunk diagnostic once. Immediately probe SPIS health again afterward. If the short burst causes NOP responses, stop output reads and debug SDK SPIS/DMA finalization; if it does not, capture and compare only after validating a supported full-read strategy.
 - No external flash write/erase.
+
+
+## SESSION UPDATE — 2026-10-26: SPIS remains healthy after inference-only pass
+- After inference using `--skip-output-read`, a follow-up read-only SPIS health probe succeeded on `ftdi://ftdi:4232hp:3:2/2`.
+- Registers: status `0x00001B06`, model size 5166 words, input size 5120 words, output size `0x03F03C13`, output start `0x00006300` (= 25344 words), inference counter `1`, SCU message `0`.
+- This confirms SPIS register communication remained healthy after inference, before any output read. The large output burst is now a stronger suspect for triggering the later SPIS NOP responses, though this is not yet proven.
+- Next controlled test: run `read_nnpa_output_chunk.py` once with default 32-byte read at offset 0 on interface /2, write only to a new chunk output file, then immediately run the read-only SPIS health probe once. If post-chunk probe returns NOP sentinel, stop further reads and investigate SPIS DMA finalization; if it remains valid, inspect captured chunk bytes and consider bounded/chunked output strategy.
+- Do not perform a full output burst yet. No external flash write/erase.
