@@ -233,3 +233,16 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Next action is now to perform the actual UTM USB detach/reconnect sequence (not run more code): ensure the Ubuntu VM has USB sharing enabled (QEMU backend), detach the FTDI entry using UTM's USB toolbar, physically disconnect the ColibryProbe cable for 5 seconds, reconnect, then reattach FTDI to Ubuntu. Run `lsusb` and `Ftdi.show_devices()` once afterward.
 - If the error remains, fully shut down the Ubuntu VM, disconnect/reconnect the FTDI, restart VM, attach device; gather UTM and macOS versions before considering package or driver changes. Do not unload/macOS kernel extensions or change libusb settings without evidence.
 - Hardware state/code status unchanged by the failed enumeration. Do not run SPIS or inference until PyFtdi enumerates interfaces successfully.
+
+
+## SESSION UPDATE — 2026-10-26 16:50: USB descriptor issue persists after Caps Lock fix
+- User reports Caps Lock behavior is fixed and wants to resume project. Do not ask for or store passwords.
+- `lsusb` sees `Bus 003 Device 004: ID 0403:6043 Future Technology Devices International, Ltd Quad RS232-HS`.
+- `sudo ... Ftdi.show_devices()` still fails at `usb.util.get_string` with `ValueError: The device has no langid`.
+- Explicit SPIS probe on previously known URI `ftdi://ftdi:4232hp:3:4/2` also fails with the same descriptor error before register communication.
+- Host UTM/macOS dialog showed: `usbredir protocol parse error for USB Device [0403:6043] at 0-2`.
+- Official UTM USB docs warn QEMU USB capture does not perform a proper hardware reset; device is configured on host before being redirected to guest, and some devices may not work reliably. Repeated failed PyFtdi enumeration should not be treated as an NNPA firmware diagnostic.
+- Official PyFtdi troubleshooting states no-langid on Linux may be a device permission issue or indicate that string descriptors are unsupported / inaccessible. In this case, the matching UTM usbredir dialog makes passthrough state a leading suspect, but not a proven root cause.
+- Next: stop project hardware commands; close picocom, shut Ubuntu down cleanly using desktop UI or `sudo poweroff` only if sudo is working, detach FTDI from UTM, unplug ColibryProbe USB physically, wait 10 seconds, reconnect directly, boot Ubuntu, then attach FTDI once from UTM USB toolbar after the guest is up. Run `lsusb` followed by one `sudo ... Ftdi.show_devices()` check.
+- If still failing, capture UTM version, macOS version, VM backend (QEMU vs Apple Virtualization), USB sharing setting, whether a hub/adapter is used, and whether the host usbredir popup reappears. Do not repeatedly toggle or reset board; do not issue SPIS/inference commands until PyFtdi enumeration is restored.
+- Continue from GitHub branch `fix/safe-spis-output-readback`; output-readback isolation and 32-byte bounded diagnostic remain saved. External flash remains untouched.
