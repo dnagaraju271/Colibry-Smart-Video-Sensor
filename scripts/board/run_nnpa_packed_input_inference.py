@@ -82,6 +82,14 @@ def parse_args() -> argparse.Namespace:
         default=15.0,
         help="Inference timeout in seconds (default: 15).",
     )
+    parser.add_argument(
+        "--skip-output-read",
+        action="store_true",
+        help=(
+            "Run one inference and report output metadata, but do not issue the "
+            "large output-memory burst read. Use to isolate inference from readback."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -226,6 +234,23 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 4
+
+        if args.skip_output_read:
+            print("========== INFERENCE RESULT (OUTPUT READ SKIPPED) ==========")
+            print(f"Firmware running state observed: {run_seen}")
+            print(f"Inference count before/after:     {counter_before} -> {counter_after}")
+            print(f"Final firmware message:           {msg_after}")
+            print(f"Final NNPA status:                0x{status_after:08X}")
+            print(f"Output start word:                {ofmap_start}")
+            print(f"Output memory address:            0x{output_addr:08X}")
+            print(f"Output info register:             0x{ofmap_info:08X}")
+            print(f"Output size register:             0x{ofmap_size_register:08X}")
+            print(f"Decoded feature-map shape:        [{height}, {width}, {depth}]")
+            print(f"Expected output bytes:             {output_bytes}")
+            print("Output memory read:                SKIPPED by --skip-output-read")
+            print("No output burst-read was issued.")
+            print("============================================================")
+            return 0
 
         # mmap_readburst takes a count of 32-bit words. byte_array=True restores
         # the byte order used by the SDK's bin_copy/readback conventions.
