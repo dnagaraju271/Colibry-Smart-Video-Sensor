@@ -437,3 +437,25 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Do not yet assume enabling error interrupts alone is sufficient. Safer candidate architecture: DMA ISR records completion/error status and clears the appropriate status bits; normal/main context performs bounded finalization after the host transaction can finish. Must verify IRQ nesting/priority and how the application main loop can process a pending flag.
 - Next inspect `examples/20_hello_world/main.c` around interrupt registration/vector setup and main loop (`sed -n '35,115p'`, `grep -n -A120 -B20 'int main\|while *(1)' ...`) and `colibry_drivers/SPIS/includes/spis_mmap.h` status/control fields. Then draft an isolated patch file / exact source patch and add its apply/build/rollback instructions to the project repo branch. Don't apply a firmware patch or rebuild until code flow is understood.
 - No current source changes to vendor SDK firmware. Current project branch includes safe host-side diagnostics only. All flash contents are preserved.
+
+
+## SESSION UPDATE — 2026-10-26 17:35: IRQ/main-loop review and guarded patch tool
+
+### New source finding
+- In `examples/20_hello_world/main.c`, the main loop blocks while inference is executing (`while (!nnpa_inference_done);`) and otherwise runs a continuous idle loop.
+- DMA ISR currently finalizes SPIS immediately. Proposed patch marks SPIS DMA completion/error as pending and returns quickly, allowing the SPI RX ISR to drain bytes; main loop then finalizes with a bounded timeout. This is a source-based, testable hypothesis, not yet a proven fix.
+- SPIS status/control fields confirm separate `spis_tx_fifo_empty`, `spis_rx_fifo_empty`, `spis_busy`, `spis_rx_irq_en`, and `spis_dma_mode` bits. Search found no documented SPIS FIFO flush/reset register in the current driver headers; patch must not invent one.
+- The project's host API sends the burst init command and then clocks data in repeated full-duplex exchanges. On the first test, one 32-byte output burst returned bytes and the subsequent register probes all returned `0xF8000000`; no further board reads should be run until firmware is updated and built.
+
+### Patch tooling committed to GitHub
+- Added `scripts/board/apply_spis_dma_recovery_patch.py` on branch `fix/safe-spis-output-readback`.
+- It is a guarded patch applier for local SDK files only:
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.c`
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.h`
+  - `examples/20_hello_world/main.c`
+- It refuses to apply if the exact source anchors do not match, creates timestamped `.pre_spis_recovery_<timestamp>` backups, and has a default dry-run mode. `--apply` changes source files only; it does not build, load firmware or flash anything.
+- Intended change: defer SPIS DMA finalization to the main loop; enable/record the SPIS channel's DMA read/write error events as well as done; bound the SPIS finalizer wait at 100 ms; log errors/timeouts from main context. The patcher does not touch `examples/50_person_detector/main.c` yet; first validate the fix on the known Hello World build.
+- A string-escape typo in the diagnostic newline literals was corrected in the patcher before use. Use the latest branch version.
+- Before applying, synchronize this script from GitHub and run its dry-run against the actual SDK. If dry-run fails or prints anchor mismatch, STOP and do not force-apply.
+- After successful dry-run, run with `--apply`, inspect the diff in the three files, then inspect the existing build system/target for `examples/20_hello_world` before compiling. No patch has yet been applied to the local SDK, and no firmware image has been rebuilt.
+- For rollback, restore the timestamped backups generated for the three files. Never run a flash target. Any new firmware should be loaded into SRAM using JTAG only.
