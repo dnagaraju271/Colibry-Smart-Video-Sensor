@@ -264,3 +264,14 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Physical USB disconnect/power-cycle means SRAM firmware is considered lost; external flash is unchanged.
 - Next: identify current UART device names (USB tty names may have changed) before reloading known-good SDK Hello World into SRAM. Then load `examples/20_hello_world/build/demo.bin` to `0x10000000` through JTAG interface `/1`, verify UART startup, then perform exactly one read-only SPIS check using interface `/2`.
 - Do not run inference or any output burst until startup and SPIS health are confirmed.
+
+
+## SESSION UPDATE — 2026-10-26 17:05: UART device map after FTDI reconnect
+- Current stable serial symlinks:
+  - `/dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if00-port0 -> /dev/ttyUSB0`
+  - `...-if01-port0 -> /dev/ttyUSB1`
+  - `...-if02-port0 -> /dev/ttyUSB2`
+  - `...-if03-port0 -> /dev/ttyUSB3`
+- Previously, `/dev/ttyUSB2` at 115200 baud successfully displayed `VDD = 0.900000`, `Bitstream loading: OK`, `System ready. Waiting for SPI input`, and later `prediction 149`. Thus start with stable by-id interface if02 for UART monitoring, but treat it as prior-confirmed mapping to reverify after cable reconnect.
+- Current FTDI URI prefix `ftdi://ftdi:4232hp:3:2/`; JTAG /1 passed with IDCODE `0x249511C3`. SPIS is expected on /2 based on prior mapping, but SPIS not rechecked after reconnect.
+- SRAM firmware was lost due USB cable power-cycle. Next steps: start picocom 115200 on `/dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if02-port0`; in another terminal load known-good `demo.bin` to SRAM at `0x10000000` via JTAG URI /1; observe UART readiness. Then run one read-only SPIS probe on URI /2.
