@@ -287,3 +287,11 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Earlier today, `/dev/ttyUSB2` at 115200 baud successfully displayed `VDD = 0.900000`, `Bitstream loading: OK`, `System ready. Waiting for SPI input`, and later `prediction 149` while Hello World firmware was loaded. Since we have physically reconnected USB and SRAM was lost, reopen `/dev/ttyUSB2` first as the previously observed UART endpoint; if no startup text appears after SRAM load, don't assume UART is wrong immediately—inspect other ports only in a controlled way.
 - JTAG currently passes with `ftdi://ftdi:4232hp:3:2/1`, IDCODE `0x249511C3`. SPIS is expected to be `ftdi://ftdi:4232hp:3:2/2` after reconnection.
 - Next: open `sudo picocom -b 115200 --imap lfcrlf /dev/ttyUSB2`, keep it open, then in a second terminal load existing `demo.bin` to SRAM via `ftdi://ftdi:4232hp:3:2/1`. Check UART startup, then perform one read-only SPIS health probe on interface `/2`. Do not run inference or output chunk yet.
+
+
+## SESSION UPDATE — 2026-10-26: SRAM reload after USB re-enumeration
+- Current USB address is `ftdi://ftdi:4232hp:3:2/`; four interfaces enumerate successfully.
+- JTAG IDCODE passed at interface `/1`: `0x249511C3`.
+- UART monitor is open on `/dev/ttyUSB2` at 115200. Before the new SRAM load, it printed repeated lines `ping pong`.
+- The existing `demo.bin` was successfully loaded into SRAM at `0x10000000` and CPU start was issued. Loader output: JTAG IDCODE passed, CPU halted, SRAM write Done, Starting CPU. No flash operation.
+- Next: inspect the already-open Picocom terminal for output **after** the CPU start. Do not assume that the earlier `ping pong` lines came from the just-loaded Hello World app. If no Hello World startup appears, identify the correct UART endpoint carefully, then check SPIS only after confirmed startup.
