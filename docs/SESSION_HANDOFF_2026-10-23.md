@@ -246,3 +246,13 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Next: stop project hardware commands; close picocom, shut Ubuntu down cleanly using desktop UI or `sudo poweroff` only if sudo is working, detach FTDI from UTM, unplug ColibryProbe USB physically, wait 10 seconds, reconnect directly, boot Ubuntu, then attach FTDI once from UTM USB toolbar after the guest is up. Run `lsusb` followed by one `sudo ... Ftdi.show_devices()` check.
 - If still failing, capture UTM version, macOS version, VM backend (QEMU vs Apple Virtualization), USB sharing setting, whether a hub/adapter is used, and whether the host usbredir popup reappears. Do not repeatedly toggle or reset board; do not issue SPIS/inference commands until PyFtdi enumeration is restored.
 - Continue from GitHub branch `fix/safe-spis-output-readback`; output-readback isolation and 32-byte bounded diagnostic remain saved. External flash remains untouched.
+
+
+## SESSION UPDATE — 2026-10-26: USB passthrough recovered
+- After a clean UTM/USB disconnect-reconnect, `lsusb` reports `Bus 003 Device 002: ID 0403:6043 Future Technology Devices International, Ltd Quad RS232-HS`.
+- `sudo ... Ftdi.show_devices()` now succeeds and lists:
+  `ftdi://ftdi:4232hp:3:2/1`, `/2`, `/3`, `/4`.
+- Previous enumeration failure (`The device has no langid`) is currently resolved. USB address changed from `3:4` to `3:2`; do not reuse old explicit URIs. Interface mapping previously validated: /1 JTAG, /2 SPIS, but verify JTAG IDCODE now before loading SRAM.
+- The USB cable was physically disconnected, so target power was cycled and SRAM firmware should be considered lost. External flash remains unchanged.
+- Next: run read-only JTAG IDCODE probe on `ftdi://ftdi:4232hp:3:2/1` at 10 kHz. If it passes, reload existing `examples/20_hello_world/build/demo.bin` into SRAM with the SRAM loader at `0x10000000`, then confirm UART `Bitstream loading: OK` and `System ready. Waiting for SPI input`. Determine the current UART device name after USB re-enumeration; do not assume it is still `/dev/ttyUSB2`.
+- After UART startup, run one read-only SPIS health probe on `ftdi://ftdi:4232hp:3:2/2`. Only if SPIS metadata is valid, proceed to run inference with new `--skip-output-read` option; do not test a 32-byte burst until after inference-only mode and SPIS health are confirmed.
