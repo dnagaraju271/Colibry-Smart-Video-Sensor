@@ -275,3 +275,15 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Previously, `/dev/ttyUSB2` at 115200 baud successfully displayed `VDD = 0.900000`, `Bitstream loading: OK`, `System ready. Waiting for SPI input`, and later `prediction 149`. Thus start with stable by-id interface if02 for UART monitoring, but treat it as prior-confirmed mapping to reverify after cable reconnect.
 - Current FTDI URI prefix `ftdi://ftdi:4232hp:3:2/`; JTAG /1 passed with IDCODE `0x249511C3`. SPIS is expected on /2 based on prior mapping, but SPIS not rechecked after reconnect.
 - SRAM firmware was lost due USB cable power-cycle. Next steps: start picocom 115200 on `/dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if02-port0`; in another terminal load known-good `demo.bin` to SRAM at `0x10000000` via JTAG URI /1; observe UART readiness. Then run one read-only SPIS probe on URI /2.
+
+
+## SESSION UPDATE — 2026-10-26: UART device nodes after USB recovery
+- `/dev/serial/by-id/` currently lists FTDI interfaces:
+  - if00 -> `/dev/ttyUSB0` (node timestamp Oct 26 16:54)
+  - if01 -> `/dev/ttyUSB1`
+  - if02 -> `/dev/ttyUSB2`
+  - if03 -> `/dev/ttyUSB3`
+- All four `/dev/ttyUSB0..3` exist and are group `dialout`.
+- Earlier today, `/dev/ttyUSB2` at 115200 baud successfully displayed `VDD = 0.900000`, `Bitstream loading: OK`, `System ready. Waiting for SPI input`, and later `prediction 149` while Hello World firmware was loaded. Since we have physically reconnected USB and SRAM was lost, reopen `/dev/ttyUSB2` first as the previously observed UART endpoint; if no startup text appears after SRAM load, don't assume UART is wrong immediately—inspect other ports only in a controlled way.
+- JTAG currently passes with `ftdi://ftdi:4232hp:3:2/1`, IDCODE `0x249511C3`. SPIS is expected to be `ftdi://ftdi:4232hp:3:2/2` after reconnection.
+- Next: open `sudo picocom -b 115200 --imap lfcrlf /dev/ttyUSB2`, keep it open, then in a second terminal load existing `demo.bin` to SRAM via `ftdi://ftdi:4232hp:3:2/1`. Check UART startup, then perform one read-only SPIS health probe on interface `/2`. Do not run inference or output chunk yet.
