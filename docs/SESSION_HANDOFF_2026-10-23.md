@@ -480,3 +480,14 @@ No more test commands tonight. The last script returned to the shell prompt and 
   - `examples/20_hello_world/main.c`: 6653 original bytes / 7834 patched bytes
 - Dry-run explicitly confirmed no files were changed. Patch has not yet been applied or compiled.
 - Next: run patcher once with `--apply`, confirm it prints timestamped backups for all three files, then inspect the diff and build configuration. Do not reload firmware or flash anything until the patched Hello World target compiles successfully.
+
+
+## SESSION UPDATE — 2026-10-26 18:05: SPIS recovery source patch applied locally
+- User ran `apply_spis_dma_recovery_patch.py --apply`; output says patch preflight passed and the source patch was applied.
+- Timestamped original backups:
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.c.pre_spis_recovery_20261026_180505`
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.h.pre_spis_recovery_20261026_180505`
+  - `examples/20_hello_world/main.c.pre_spis_recovery_20261026_180505`
+- Patcher reports it did not build, load firmware, or perform flash operations. No firmware binary has been rebuilt or loaded with this patch yet.
+- Next: inspect exact diffs between each current source file and timestamped backup; verify generated C diagnostic newline escapes and that DMA event/error masks match the SDK declarations. Then locate the actual Hello World make/build configuration and compiler/toolchain. Do not compile or load any image until the source diff is reviewed and build target confirmed. Never use flash targets.
+- After source review, compile the test firmware with the documented supported CORE-V toolchain; if compile succeeds, load only into SRAM through JTAG. Then confirm UART startup, test inference-only once, inspect SPIS health, and only then test a 32-byte output read. Preserve the external flash and existing bitstream backup.
