@@ -352,3 +352,15 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Next work should be source review: inspect vendor SDK `mmap_readburst` implementation and SPIS firmware `dma_irq_handler()`, DMA done/error status bits, `spis_burst_finalize()`, interrupt re-enable, and DMA-mode disable flow. Determine why a burst read does not return SPIS to normal command/register mode. Prefer a minimal, evidence-based firmware fix with build/test validation, not a host-script workaround.
 - The project repository branch `fix/safe-spis-output-readback` has `--skip-output-read`, `read_nnpa_output_chunk.py`, and this handoff. The actual vendor firmware sources may live in the local SDK or Mac build tree rather than the project repo; verify before attempting to change/commit them.
 - External flash remains untouched. Preserve all existing model/flash assets.
+
+
+## SESSION UPDATE — 2026-10-26: Confirmed short output-read burst triggers SPIS NOP state
+- Sequence is now reproducible once without extra inference:
+  1. Inference-only test finishes with count 0->1, status `0x00001B06`, firmware message 0, output start 25344.
+  2. Read-only SPIS probe before output read is healthy and matches those values.
+  3. One 32-byte burst at address `0x30064000` completes and returns byte prefix `95 f9 f9 95 95 95 ff f9 95 f9 f9 95 95 95 ff f9 00 00 00 f8 00 00 00 f8 00 00 00 f8 00 00 00 f8`.
+  4. Immediately following SPIS probe returns `0xF8000000` for every register.
+- This establishes that the burst read is associated with the SPIS command/register path becoming unavailable, even at 32 bytes. It suggests firmware-side burst DMA completion/finalization or SPIS protocol state recovery, but the exact root cause still requires source review.
+- Do not issue another burst, inference, or SPIS health probe until reviewing the firmware source. A board power-cycle or known-good SRAM reload may be needed later to restore normal SPIS.
+- Next: inspect actual local SDK sources for `spis_burst_finalize()`, the SPIS DMA setup, and the DMA ISR's done/error handling. Search the SDK's headers for the channel-3 status/error bit definitions. Review both the Ubuntu SDK source and the Mac-side firmware build copy to identify the authoritative source tree. Do not patch blindly or rebuild before seeing the relevant snippets.
+- GitHub project branch contains host-side separation options and a bounded-read diagnostic; the likely fix may belong in vendor/SDK firmware sources not currently tracked in the project repository. Don't claim these Python changes repair the actual SPIS firmware fault.
