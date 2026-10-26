@@ -311,3 +311,14 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - SPIS /2 at `ftdi://ftdi:4232hp:3:2/2` now returns valid register reads: status `0x00000006`, model size 5166 words, input size 5120 words, output-size register `0x03F03C13`, output start `0` before inference, counter `0`, SCU message `0`. This is a healthy pre-inference metadata snapshot; output start 0 is expected before a new inference.
 - Next action: run a single packed-input inference using the newly synced script with `--skip-output-read`, explicit SPIS URI /2, input `test_person_input_nnpa_packed.bin`, timeout 15. This triggers inference but deliberately skips the large output burst.
 - After it completes, inspect inference count/status/output start metadata and immediately run the read-only SPIS health probe once. Do not use the full-output readback or 32-byte chunk reader until after this isolation test and post-inference SPIS health check.
+
+
+## SESSION UPDATE — 2026-10-26: Inference-only test passed
+- Ran synced `run_nnpa_packed_input_inference.py --skip-output-read` using current SPIS URI `ftdi://ftdi:4232hp:3:2/2`.
+- Input transfer succeeded: 81,920 bytes sent to input memory address `0x30019000`.
+- Inference request completed within timeout; firmware running state observed true.
+- Inference counter advanced `0 -> 1`; final firmware message `0`; final NNPA status `0x00001B06`.
+- Output start word `25344`, address `0x30064000`, size register `0x03F03C13`, decoded output shape `[16,20,64]`, expected logical output length 20,480 bytes.
+- Crucially, `--skip-output-read` reports no output burst-read was issued. This is a clean inference-only pass.
+- Next: perform exactly one read-only SPIS health probe on `ftdi://ftdi:4232hp:3:2/2`. If metadata reads are healthy, then attempt the new single 32-byte output chunk diagnostic once. Immediately probe SPIS health again afterward. If the short burst causes NOP responses, stop output reads and debug SDK SPIS/DMA finalization; if it does not, capture and compare only after validating a supported full-read strategy.
+- No external flash write/erase.
