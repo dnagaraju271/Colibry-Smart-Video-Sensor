@@ -459,3 +459,13 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Before applying, synchronize this script from GitHub and run its dry-run against the actual SDK. If dry-run fails or prints anchor mismatch, STOP and do not force-apply.
 - After successful dry-run, run with `--apply`, inspect the diff in the three files, then inspect the existing build system/target for `examples/20_hello_world` before compiling. No patch has yet been applied to the local SDK, and no firmware image has been rebuilt.
 - For rollback, restore the timestamped backups generated for the three files. Never run a flash target. Any new firmware should be loaded into SRAM using JTAG only.
+
+
+## SESSION UPDATE — 2026-10-26 18:00: Guarded patch preflight passed
+- User downloaded the latest `scripts/board/apply_spis_dma_recovery_patch.py` from branch `fix/safe-spis-output-readback`.
+- Python syntax check passed; patcher dry-run returned `SPIS DMA recovery patch preflight passed` and matched all 3 expected local SDK source anchors:
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.c` (original 7534 bytes, proposed 8289)
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.h` (original 2714 bytes, proposed 2769)
+  - `examples/20_hello_world/main.c` (original 6653 bytes, proposed 7834)
+- Dry-run made no changes. Next: after confirming exact patch plan, apply using the patcher's `--apply` flag so timestamped backups are created; inspect resulting diff and confirm no unintended changes before building.
+- The patch changes source only: finalization moves out of the DMA ISR into the main loop, DMA done/read/write error events are enabled/recorded, finalization wait capped at 100 ms, errors/timeouts logged. No build/firmware load/flash operation yet.
