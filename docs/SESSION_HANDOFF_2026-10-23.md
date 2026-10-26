@@ -396,3 +396,22 @@ No more test commands tonight. The last script returned to the shell prompt and 
   1. `sed -n '100,190p' ~/colibryNPU_SDK/riscv_runtime/tools/colibry_interfaces/colibry_spis_api.py` plus `grep -n -A70 -B10 'def mmap_readburst' ...` to inspect what SPI commands/CS framing host sends and the units of its `size` argument.
   2. `sed -n '35,140p' ~/colibryNPU_SDK/colibry_drivers/DMA/includes/dma_mmap.h` and `sed -n '105,145p' ...` to verify exact interrupt-status bitfield order.
 - Do not make a firmware source change yet; first confirm the API's burst protocol and bit definitions. Vendor firmware resides in the local SDK and must be deliberately incorporated into a reproducible project patch/build workflow before patching. No board operation/flash operation was performed during source review.
+
+
+## SESSION UPDATE — 2026-10-26: Host burst API and DMA status definitions inspected
+
+### Host-side burst protocol
+- In `riscv_runtime/tools/colibry_interfaces/colibry_spis_api.py`, `mmap_readburst(addr, ndata, byte_array=False)` documents `ndata` as a count of 32-bit words.
+- It sends burst-init arguments `addr` and `ndata * 4` bytes, then clocks data using one or more NOP transactions, each up to `BURST_WORD_LEN` 32-bit words.
+- The newly added small reader passes `byte_count // 4`; for `--bytes 32`, it requests 8 words and initializes a 32-byte burst. Units are consistent; no obvious byte-vs-word bug in this call.
+- When `byte_array=True`, it appends each returned 32-bit word's bytes in reverse order (`read_buf[l*4+3]` through `read_buf[l*4]`). This is the API's explicit byte-order conversion; cannot assume output quantization is correct solely from that conversion.
+
+### Firmware DMA status definitions
+- `DMA_EVT_DONE_MASK = 0x000000ff`; `DMA_EVT_READ_ERROR_MASK = 0x0000ff00`; `DMA_EVT_WRITE_ERROR_MASK = 0x00ff0000`; `DMA_EVT_THRESHOLD_MASK = 0xff000000`.
+- Status structure confirms 8-bit per-event fields: done, read error, write error, threshold.
+- Existing SPIS DMA init sets `DMA_reg->dma_int_en.word = (1 << alloc_dma_channel)`, enabling only the channel's done-bit position.
+- Hello World DMA ISR checks only `dma_int_status.word & (1 << SPIS_DMA_CHANNEL)`, clears that done bit, then calls `spis_burst_finalize()`. No visible read/write error interrupt handling is present in that handler.
+- `spis_burst_finalize()` has an unbounded wait until TX FIFO empty and SPIS not busy, then clears SPIS DMA mode and re-enables RX IRQ.
+- The evidence suggests a firmware recovery risk: a DMA error may not be separately enabled/handled; a finalization wait can hang if hardware never satisfies the status condition. This is a plausible source-level defect, not yet confirmed as the runtime root cause.
+- Next inspect the complete read-burst initialization branch (lines ~60–135 of `spis_protocol.c`), the SPIS RX IRQ handler, the `SPIS_DMA_CHANNEL` constant and relevant status semantics. Then decide whether to add bounded error-aware finalization and explicit status logging.
+- No source changes have been made to the vendor SDK firmware; only the host-side isolation tools and session notes are committed to the project branch. No further board commands were performed during this source review.
