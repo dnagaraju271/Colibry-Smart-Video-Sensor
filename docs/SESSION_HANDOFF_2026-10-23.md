@@ -491,3 +491,15 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Patcher reports it did not build, load firmware, or perform flash operations. No firmware binary has been rebuilt or loaded with this patch yet.
 - Next: inspect exact diffs between each current source file and timestamped backup; verify generated C diagnostic newline escapes and that DMA event/error masks match the SDK declarations. Then locate the actual Hello World make/build configuration and compiler/toolchain. Do not compile or load any image until the source diff is reviewed and build target confirmed. Never use flash targets.
 - After source review, compile the test firmware with the documented supported CORE-V toolchain; if compile succeeds, load only into SRAM through JTAG. Then confirm UART startup, test inference-only once, inspect SPIS health, and only then test a 32-byte output read. Preserve the external flash and existing bitstream backup.
+
+
+## SESSION UPDATE — 2026-10-26 18:05: Guarded source patch applied locally
+- User ran the latest patch applier with `--apply` on Ubuntu.
+- Patch preflight passed and three timestamped backups were created:
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.c.pre_spis_recovery_20261026_180505`
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.h.pre_spis_recovery_20261026_180505`
+  - `examples/20_hello_world/main.c.pre_spis_recovery_20261026_180505`
+- Patched source sizes: SPIS protocol C 8289 bytes, header 2769 bytes, Hello World main 7834 bytes. No build or board operation occurred during patch application; external flash remains untouched.
+- Before build, compare each source file with its exact timestamped backup using `diff -u` and inspect the example's Makefile/build scripts. Confirm that source changes are exactly the intended deferred finalization, timeout, and DMA error handling. Do not compile until reviewing diff and build target.
+- Potential patch behavior to review: DMA ISR stores/clears SPIS done/read-error/write-error events and marks finalization pending; main loop calls bounded finalizer; finalize timeout is 100 ms. Need verify the C newline diagnostic strings and check that register event mask definitions are used correctly. This patch remains experimental and not yet compiled or loaded.
+- Once diff review is clean, compile only `examples/20_hello_world` using the established build command, then validate the output ELF/map/bin paths and preserve existing binaries before placing the new test binary. Use JTAG SRAM loader only, never a flash target.
