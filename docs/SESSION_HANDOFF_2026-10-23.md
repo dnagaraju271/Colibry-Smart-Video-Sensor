@@ -127,3 +127,39 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Do not run the SRAM loader, flash tools, or output-window script.
 - To power down the EvalboardTiny, use the ColibryProbe's physical PWR_OFF button to remove target power; don't use a reset sequence as a substitute.
 - If also powering down Ubuntu, run `sudo poweroff` inside the VM only after saving this checkpoint and closing any applications that need the files.
+
+
+## SESSION UPDATE — 2026-10-26: Inference succeeded; output readback is unreliable
+
+### Confirmed today
+- Board selector set to JTAG; FTDI USB device enumerated as 0403:6043.
+- JTAG IDCODE probe on `ftdi://ftdi:4232hp:3:4/1` at 10 kHz returned `0x249511C3`.
+- Loaded the existing SDK Hello World image `examples/20_hello_world/build/demo.bin` into SRAM at `0x10000000` using the SRAM loader. The log said CPU halted, SRAM write done, starting CPU. No external flash write was performed.
+- UART on `/dev/ttyUSB2` printed VDD 0.9 V, `Bitstream loading: OK`, and `System ready. Waiting for SPI input`.
+- Before inference, SPIS/MMAP returned structured values: status `0x00000006`, model size 5166 words, input size 5120 words, input start word 6144, output size register `0x03F03C13`, counter 0.
+- One input inference completed: count 0 -> 1, status `0x00001B06`, output start word 25344, address `0x30064000`, decoded output dimensions [16,20,64], 20,480 logical bytes. This confirms the accelerator executed one pass; it does not confirm feature accuracy or person detection.
+- The saved output `nnpa_output_recovery_20261026.bin` has SHA-256 `94ea2f613c065f78d3c917cce77c696d5eb3898bc30acae76eb8895da57d5800`. It is byte-identical to `nnpa_output_cpu_mem_access_fix_20261024.bin`.
+- Offline ONNX comparison is poor (HWC correlation -0.007173, RMSE about 7.151; NCHW correlation 0.027763, RMSE about 7.138). Raw bytes are dominated by 0, 248, 249, 255; only 8/20480 are in expected code range 149..205. Therefore the current capture is not a trustworthy feature map and those metrics must not be treated as final model accuracy.
+- After the output burst-read, subsequent SPIS metadata probes returned `0xF8000000` for every register (the vendor API's `SPIS_NOP_OPCODE`). A read-only probe stopped before sampling output memory. Do not issue another large output burst at present.
+- No flash erase/write was performed in this session.
+
+### What is correct vs. not yet correct
+- JTAG selection/path and the SRAM loader work.
+- Hello World startup, bitstream check, SPIS input transfer, inference trigger, counter advance, and final NNPA status were observed to work.
+- The output-read path is not validated. `mmap_readburst` uses the SDK's burst-DMA path, while the inference script currently reads the entire 20,480-byte logical output in one burst request (5,120 32-bit words split by the host API into 32-byte exchanges). The raw capture and post-read NOP sentinel are evidence of an output-transfer / SPIS-state problem, but do not by themselves prove exactly which firmware/DMA condition caused it.
+- Source inspection found DMA interrupt status has separate done, read-error, and write-error bitfields. The example application's SPIS DMA handler tests only the done bit before calling `spis_burst_finalize()`. Error interrupt handling and a bounded recovery path need review before a firmware fix is chosen.
+- The current model produces a [1,64,16,20] backbone feature map. It is not yet an end-to-end detector and has no validated bounding-box/person-count output.
+
+### Controlled recovery plan
+1. Use the new project option `--skip-output-read` to separate inference from the output-memory burst. This option reports inference metadata and then exits without dumping output.
+2. Restore a known firmware state by SRAM-loading the existing `demo.bin` again (only if needed to recover SPIS). Keep external flash untouched.
+3. After a fresh successful inference with output read skipped, attempt exactly one 32-byte output burst using `scripts/board/read_nnpa_output_chunk.py`.
+4. Immediately run the read-only SPIS health probe once. If registers return normal values, test bounded chunks before any full output capture. If SPIS returns NOP again after the 32-byte burst, stop and fix/rebuild the SPIS DMA handling before another capture.
+5. Only after output readback remains reliable, establish output byte format/layout and repeat the ONNX numerical comparison.
+6. Do not rebuild or retrain the YOLO model yet. Preserve the current NNPA model and flash backup. Do not run flash write/erase tools.
+
+### GitHub sync
+- Working branch: `fix/safe-spis-output-readback`
+- Added `--skip-output-read` to `scripts/board/run_nnpa_packed_input_inference.py`.
+- Added `scripts/board/read_nnpa_output_chunk.py`, a single-burst read capped at 32 bytes.
+- These changes isolate the failing operation; they do not yet claim to fix the firmware-side SPIS issue.
