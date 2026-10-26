@@ -364,3 +364,15 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Do not issue another burst, inference, or SPIS health probe until reviewing the firmware source. A board power-cycle or known-good SRAM reload may be needed later to restore normal SPIS.
 - Next: inspect actual local SDK sources for `spis_burst_finalize()`, the SPIS DMA setup, and the DMA ISR's done/error handling. Search the SDK's headers for the channel-3 status/error bit definitions. Review both the Ubuntu SDK source and the Mac-side firmware build copy to identify the authoritative source tree. Do not patch blindly or rebuild before seeing the relevant snippets.
 - GitHub project branch contains host-side separation options and a bounded-read diagnostic; the likely fix may belong in vendor/SDK firmware sources not currently tracked in the project repository. Don't claim these Python changes repair the actual SPIS firmware fault.
+
+
+## SESSION UPDATE — 2026-10-26: Located authoritative SPIS/DMA firmware source
+- Ubuntu source found at `/home/nagaraju/colibryNPU_SDK/components_drivers/SPIS_PROTOCOL/spis_protocol.c`; `spis_burst_finalize()` begins around line 176.
+- DMA ISR call sites located at:
+  - `examples/20_hello_world/main.c:81-84`
+  - `examples/50_person_detector/main.c:82-85`
+  - `examples/50_person_detector/main_hello_world_reference.c:81-84`
+  - `examples/40_video_numbers_ble/main.c:94-97`
+- Before changing firmware, inspect SPIS DMA setup/finalize source and actual status-bit definitions/ISR branches from the currently built Hello World target. Next collect the exact surrounding code via `sed -n '120,225p' .../spis_protocol.c`, `sed -n '65,100p' .../examples/20_hello_world/main.c`, and `grep -RInE 'DMA.*(DONE|ERROR|STATUS|ERR)|.*DMA.*STATUS' ... --include='*.h' --include='*.c'`.
+- The key question is whether only DMA done status invokes `spis_burst_finalize()` while DMA read/write error status leaves SPIS in DMA mode or receive interrupts disabled. This is a hypothesis until source is reviewed.
+- No board commands were run after the last read-only probe returned NOP sentinels. Do not run further SPIS or inference attempts until the source has been reviewed and a recovery/fix plan is made.
