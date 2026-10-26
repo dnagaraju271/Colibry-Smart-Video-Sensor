@@ -415,3 +415,13 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - The evidence suggests a firmware recovery risk: a DMA error may not be separately enabled/handled; a finalization wait can hang if hardware never satisfies the status condition. This is a plausible source-level defect, not yet confirmed as the runtime root cause.
 - Next inspect the complete read-burst initialization branch (lines ~60–135 of `spis_protocol.c`), the SPIS RX IRQ handler, the `SPIS_DMA_CHANNEL` constant and relevant status semantics. Then decide whether to add bounded error-aware finalization and explicit status logging.
 - No source changes have been made to the vendor SDK firmware; only the host-side isolation tools and session notes are committed to the project branch. No further board commands were performed during this source review.
+
+
+## SESSION UPDATE — 2026-10-26 17:25: Burst setup and IRQ findings refined
+- Host `mmap_readburst(addr, ndata)` sets burst byte length to `ndata * 4`, where `ndata` is 32-bit words; for 32 bytes the host sends 8 words. Units in the new chunk reader are consistent.
+- Host clocks the output data in exchanges of at most `BURST_WORD_LEN` 32-bit words; chunks are separate `spi_ctrl.exchange(..., duplex=True)` transactions.
+- Firmware SPI RX ISR drains MOSI dummy words whenever `spis_dma_mode` is 1.
+- DMA event status is split into 8-bit fields: done bits 0..7, read error bits 8..15, write error bits 16..23, threshold bits 24..31. Current setup only enables `1 << alloc_dma_channel`; current ISR only checks/clears that done bit and then calls finalizer.
+- Finalizer has an unbounded loop waiting for TX FIFO empty AND SPIS not busy. The SPI RX handler that drains dummy bytes may not execute while the DMA ISR is spinning, depending on interrupt nesting/priority; a stuck error path is also not recovered. Both are plausible failure modes given the proven status changes after a burst.
+- Before patching, inspect SPIS control/status register fields and available FIFO reset/flush mechanism. Goal for patch: enable channel-specific read/write error interrupts, record/clear the corresponding event bits, make finalization bounded, drain pending RX dummy bytes while in the DMA ISR, and restore normal protocol state even on error. Avoid clearing TX FIFO unless the register map documents a valid operation.
+- This is still source-level diagnosis only. No vendor firmware patch has been applied or compiled, and no additional hardware test was performed. Preserve existing flash contents and source backups.
