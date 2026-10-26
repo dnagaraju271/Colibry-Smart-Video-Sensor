@@ -163,3 +163,35 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Added `--skip-output-read` to `scripts/board/run_nnpa_packed_input_inference.py`.
 - Added `scripts/board/read_nnpa_output_chunk.py`, a single-burst read capped at 32 bytes.
 - These changes isolate the failing operation; they do not yet claim to fix the firmware-side SPIS issue.
+
+
+## SESSION UPDATE — 2026-10-26: Paused for Ubuntu sudo authentication
+
+### Current blocker
+- User reports `sudo -v` fails with “Sorry, try again” even when entering what they believe is the Ubuntu account password.
+- `whoami` returns `nagaraju`.
+- `setxkbmap -query` reports `layout: us`; user says their physical keyboard is QWERTY, so layout mismatch is not currently the leading theory.
+- Do not continue repeated sudo attempts. No password was shared.
+- The Colibry board was previously running SRAM-loaded `examples/20_hello_world/build/demo.bin`; UART showed `Bitstream loading: OK` and `System ready. Waiting for SPI input`.
+- JTAG had passed; the SPIS probe after a full-output burst returned `0xF8000000` for all sampled metadata. No more board tests until authentication is resolved.
+- The user's screenshot/logs indicate the GitHub safety branch files were downloaded into the local project and py_compile passed at timestamp `20261026_143647`.
+
+### GitHub changes saved
+- Branch: `fix/safe-spis-output-readback`
+- Added `--skip-output-read` to `scripts/board/run_nnpa_packed_input_inference.py` so inference can be tested without issuing the large output burst.
+- Added `scripts/board/read_nnpa_output_chunk.py`, which validates metadata and caps a single output burst to 32 bytes.
+- Updated this handoff file with Oct 26 progress.
+- Relevant commit sequence on branch includes inference-only option, bounded output-read script, and handoff update.
+
+### Resume procedure
+1. Resolve local Ubuntu authentication using the user's approved Recovery Mode path; no Colibry board or external flash changes are necessary for this.
+2. Verify with `sudo -v` after reboot. Never request or record the password in chat.
+3. Confirm local project code and handoff match branch `fix/safe-spis-output-readback` (pull/sync latest handoff after authentication is working if required).
+4. Keep the board powered/state stable; first run read-only SPIS health probe. If it returns NOP sentinel, reload the existing `demo.bin` into SRAM using the known-good JTAG loader, verify UART readiness, and recheck SPIS.
+5. Use `--skip-output-read` to isolate inference from output readback. Only then attempt one 32-byte output burst with `read_nnpa_output_chunk.py`; immediately run a read-only SPIS health check once.
+6. If the short burst breaks SPIS again, stop and inspect/fix the firmware SPIS/DMA completion/error path before more output reads.
+7. Do not reflash, erase, retrain, or rebuild the YOLO model at this stage.
+
+### Data safety
+- Existing external flash backup remains preserved; no flash write/erase is reported for the Oct 26 session.
+- Never send passwords or reset credentials through chat.
