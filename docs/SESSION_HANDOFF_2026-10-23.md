@@ -341,3 +341,14 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - This chunk matches the prefix previously observed in the full capture, so it reproduces the suspicious byte pattern. Whether this short burst leaves SPIS functional is not yet known.
 - Immediate next action: perform exactly one read-only SPIS health probe against `ftdi://ftdi:4232hp:3:2/2`, with `--repeats 1`. If valid metadata remains, the 32-byte read did not make the register interface fail; this still does not validate tensor contents. If it returns `0xF8000000` sentinels, stop further burst reads and inspect the SDK/firmware SPIS DMA completion path.
 - Do not run another inference, another burst, or any flash operation before checking health.
+
+
+## SESSION UPDATE — 2026-10-26: 32-byte output burst leaves SPIS NOP
+- Immediately before the single 32-byte output burst, SPIS metadata was valid: status `0x00001B06`, output start word 25344, output size `0x03F03C13`, inference count 1, firmware message 0.
+- One 32-byte `mmap_readburst` returned bytes successfully and saved them to `nnpa_output_chunk_20261026.bin`; prefix was `95 f9 f9 95 95 95 ff f9 95 f9 f9 95 95 95 ff f9 00 00 00 f8 00 00 00 f8 00 00 00 f8 00 00 00 f8`.
+- Immediately afterwards, the read-only SPIS health probe on `ftdi://ftdi:4232hp:3:2/2` returned `0xF8000000` for status, model size, input size, output size, output start, inference counter, and SCU message.
+- This is strong evidence that the burst-read operation, even at 32 bytes, is associated with the SPIS interface entering/staying in its NOP-response state. It does not yet prove the precise firmware cause.
+- Stop all further SPIS MMAP reads, output bursts, and inference attempts for now. Do not reset/ reload firmware just to repeat the symptom.
+- Next work should be source review: inspect vendor SDK `mmap_readburst` implementation and SPIS firmware `dma_irq_handler()`, DMA done/error status bits, `spis_burst_finalize()`, interrupt re-enable, and DMA-mode disable flow. Determine why a burst read does not return SPIS to normal command/register mode. Prefer a minimal, evidence-based firmware fix with build/test validation, not a host-script workaround.
+- The project repository branch `fix/safe-spis-output-readback` has `--skip-output-read`, `read_nnpa_output_chunk.py`, and this handoff. The actual vendor firmware sources may live in the local SDK or Mac build tree rather than the project repo; verify before attempting to change/commit them.
+- External flash remains untouched. Preserve all existing model/flash assets.
