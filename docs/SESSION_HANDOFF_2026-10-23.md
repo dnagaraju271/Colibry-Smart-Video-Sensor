@@ -223,3 +223,13 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Then in Ubuntu inspect `gsettings get org.gnome.desktop.input-sources xkb-options`. Apply the documented XKB workaround option `shift:both_capslock_cancel` (preserve existing options) so pressing both Shift keys enables Caps Lock and pressing one Shift disables it; use both Shift keys then one Shift to resynchronize state.
 - After fixing the keyboard state, verify `sudo -v` once. Never ask for or store password in chat.
 - Current separate USB blocker remains: UTM dialog `usbredir protocol parse error for USB Device [0403:6043] at 0-2`, and PyFtdi enumeration failing with `ValueError: The device has no langid`. Fix the host/VM keyboard issue first, then reconnect FTDI passthrough once and retest enumeration.
+
+
+## SESSION UPDATE — 2026-10-26 16:45: Caps Lock fixed; PyFtdi still cannot enumerate descriptors
+- User reports the Caps Lock inversion is now fixed.
+- Latest command was `sudo -v && sudo ... Ftdi.show_devices()`; it reached the Python traceback, so sudo authentication succeeded for this invocation.
+- `lsusb` sees `0403:6043` at Bus 003 Device 004, but `Ftdi.show_devices()` fails reading USB product string/LANGID with `ValueError: The device has no langid`.
+- Earlier macOS/UTM popup explicitly stated `usbredir protocol parse error for USB Device [0403:6043] at 0-2`.
+- Next action is now to perform the actual UTM USB detach/reconnect sequence (not run more code): ensure the Ubuntu VM has USB sharing enabled (QEMU backend), detach the FTDI entry using UTM's USB toolbar, physically disconnect the ColibryProbe cable for 5 seconds, reconnect, then reattach FTDI to Ubuntu. Run `lsusb` and `Ftdi.show_devices()` once afterward.
+- If the error remains, fully shut down the Ubuntu VM, disconnect/reconnect the FTDI, restart VM, attach device; gather UTM and macOS versions before considering package or driver changes. Do not unload/macOS kernel extensions or change libusb settings without evidence.
+- Hardware state/code status unchanged by the failed enumeration. Do not run SPIS or inference until PyFtdi enumerates interfaces successfully.
