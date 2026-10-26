@@ -256,3 +256,11 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - The USB cable was physically disconnected, so target power was cycled and SRAM firmware should be considered lost. External flash remains unchanged.
 - Next: run read-only JTAG IDCODE probe on `ftdi://ftdi:4232hp:3:2/1` at 10 kHz. If it passes, reload existing `examples/20_hello_world/build/demo.bin` into SRAM with the SRAM loader at `0x10000000`, then confirm UART `Bitstream loading: OK` and `System ready. Waiting for SPI input`. Determine the current UART device name after USB re-enumeration; do not assume it is still `/dev/ttyUSB2`.
 - After UART startup, run one read-only SPIS health probe on `ftdi://ftdi:4232hp:3:2/2`. Only if SPIS metadata is valid, proceed to run inference with new `--skip-output-read` option; do not test a 32-byte burst until after inference-only mode and SPIS health are confirmed.
+
+
+## SESSION UPDATE — 2026-10-26 17:00: JTAG verified after USB passthrough recovery
+- After reconnecting FTDI, current URI is `ftdi://ftdi:4232hp:3:2/` with four interfaces.
+- Read-only JTAG IDCODE at `ftdi://ftdi:4232hp:3:2/1`, 10 kHz returned `0x249511C3`; result PASS.
+- Physical USB disconnect/power-cycle means SRAM firmware is considered lost; external flash is unchanged.
+- Next: identify current UART device names (USB tty names may have changed) before reloading known-good SDK Hello World into SRAM. Then load `examples/20_hello_world/build/demo.bin` to `0x10000000` through JTAG interface `/1`, verify UART startup, then perform exactly one read-only SPIS check using interface `/2`.
+- Do not run inference or any output burst until startup and SPIS health are confirmed.
