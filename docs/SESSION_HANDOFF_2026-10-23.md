@@ -204,3 +204,13 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Earlier, sudo PyFtdi enumeration succeeded and listed interfaces `ftdi://ftdi:4232hp:3:4/1` through `/4`. USB bus/device numbers can change after reconnect/VM passthrough changes.
 - Resume next with a read-only `lsusb | grep -i -E 'FTDI|0403'`, then explicitly select the current FTDI interface rather than auto-detection. If the USB descriptor error persists, re-check UTM USB passthrough/reconnect and device permissions before any NNPA/SPIS operation.
 - Do not run inference, burst output reads, reset the CPU, or modify external flash until the interface enumeration issue is cleared.
+
+
+## SESSION UPDATE — 2026-10-26 16:25: UTM usbredir protocol error
+- User captured a macOS/UTM dialog: `usbredir protocol parse error for USB Device [0403:6043] at 0-2`.
+- In Ubuntu, `lsusb` still sees `Bus 003 Device 004: ID 0403:6043 Future Technology Devices International, Ltd Quad RS232-HS`.
+- Both an explicit SPIS probe and `sudo ... Ftdi.show_devices()` fail at USB descriptor enumeration with `ValueError: The device has no langid (permission issue, no string descriptors supported or device error)`.
+- Since the host UTM USB-redirection error and PyUSB descriptor failure now co-occur, prioritize UTM/macOS USB passthrough stability. Do not interpret this as proof of an NNPA/SPIS firmware fault.
+- Safe recovery: stop running board scripts; detach FTDI from VM using UTM USB toolbar; physically disconnect/reconnect the ColibryProbe USB cable (avoid hubs/adapters if possible); re-attach only the FTDI device to Ubuntu using UTM USB menu after VM is running; then run `lsusb` and PyFtdi enumeration once. If the UTM popup reappears, stop and report UTM/macOS versions and whether the FTDI is connected through a hub. Do not delete UTM settings, run kext commands, or repeatedly toggle the interface.
+- Official UTM USB sharing docs: https://docs.getutm.app/guest-support/sharing/usb/ . The docs note USB sharing needs to be enabled and device attached to the VM; the USB toolbar lets users attach/detach devices.
+- Project files and scripts remain backed up/synchronized. No additional inference or flash operation was done in response to this error.
