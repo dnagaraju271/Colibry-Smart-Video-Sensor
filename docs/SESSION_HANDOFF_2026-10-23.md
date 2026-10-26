@@ -469,3 +469,14 @@ No more test commands tonight. The last script returned to the shell prompt and 
   - `examples/20_hello_world/main.c` (original 6653 bytes, proposed 7834)
 - Dry-run made no changes. Next: after confirming exact patch plan, apply using the patcher's `--apply` flag so timestamped backups are created; inspect resulting diff and confirm no unintended changes before building.
 - The patch changes source only: finalization moves out of the DMA ISR into the main loop, DMA done/read/write error events are enabled/recorded, finalization wait capped at 100 ms, errors/timeouts logged. No build/firmware load/flash operation yet.
+
+
+## SESSION UPDATE — 2026-10-26 18:00: Guarded patcher dry-run passed
+- Latest `scripts/board/apply_spis_dma_recovery_patch.py` downloaded successfully from branch `fix/safe-spis-output-readback`.
+- `py_compile` passed.
+- Dry-run preflight passed against the actual Ubuntu SDK source anchors:
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.c`: 7534 original bytes / 8289 patched bytes
+  - `components_drivers/SPIS_PROTOCOL/spis_protocol.h`: 2714 original bytes / 2769 patched bytes
+  - `examples/20_hello_world/main.c`: 6653 original bytes / 7834 patched bytes
+- Dry-run explicitly confirmed no files were changed. Patch has not yet been applied or compiled.
+- Next: run patcher once with `--apply`, confirm it prints timestamped backups for all three files, then inspect the diff and build configuration. Do not reload firmware or flash anything until the patched Hello World target compiles successfully.
