@@ -330,3 +330,14 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - This confirms SPIS register communication remained healthy after inference, before any output read. The large output burst is now a stronger suspect for triggering the later SPIS NOP responses, though this is not yet proven.
 - Next controlled test: run `read_nnpa_output_chunk.py` once with default 32-byte read at offset 0 on interface /2, write only to a new chunk output file, then immediately run the read-only SPIS health probe once. If post-chunk probe returns NOP sentinel, stop further reads and investigate SPIS DMA finalization; if it remains valid, inspect captured chunk bytes and consider bounded/chunked output strategy.
 - Do not perform a full output burst yet. No external flash write/erase.
+
+
+## SESSION UPDATE — 2026-10-26: One bounded 32-byte output read completed
+- The synced `read_nnpa_output_chunk.py` completed one 32-byte burst read using SPIS interface `ftdi://ftdi:4232hp:3:2/2`.
+- Pre-read metadata was valid: status `0x00001B06`, output start word `25344`, output size `0x03F03C13`, inference counter 1, firmware message 0.
+- Read address: `0x30064000`; offset 0; length 32 bytes.
+- Captured first 32 bytes: `95 f9 f9 95 95 95 ff f9 95 f9 f9 95 95 95 ff f9 00 00 00 f8 00 00 00 f8 00 00 00 f8 00 00 00 f8`.
+- SHA-256: `5d732063410b2ec93c4854d3ae90fd4c461a566796c99b2c38b6ea2b8a5f10c2`.
+- This chunk matches the prefix previously observed in the full capture, so it reproduces the suspicious byte pattern. Whether this short burst leaves SPIS functional is not yet known.
+- Immediate next action: perform exactly one read-only SPIS health probe against `ftdi://ftdi:4232hp:3:2/2`, with `--repeats 1`. If valid metadata remains, the 32-byte read did not make the register interface fail; this still does not validate tensor contents. If it returns `0xF8000000` sentinels, stop further burst reads and inspect the SDK/firmware SPIS DMA completion path.
+- Do not run another inference, another burst, or any flash operation before checking health.
