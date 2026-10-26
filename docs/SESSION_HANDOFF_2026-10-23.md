@@ -214,3 +214,12 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Safe recovery: stop running board scripts; detach FTDI from VM using UTM USB toolbar; physically disconnect/reconnect the ColibryProbe USB cable (avoid hubs/adapters if possible); re-attach only the FTDI device to Ubuntu using UTM USB menu after VM is running; then run `lsusb` and PyFtdi enumeration once. If the UTM popup reappears, stop and report UTM/macOS versions and whether the FTDI is connected through a hub. Do not delete UTM settings, run kext commands, or repeatedly toggle the interface.
 - Official UTM USB sharing docs: https://docs.getutm.app/guest-support/sharing/usb/ . The docs note USB sharing needs to be enabled and device attached to the VM; the USB toolbar lets users attach/detach devices.
 - Project files and scripts remain backed up/synchronized. No additional inference or flash operation was done in response to this error.
+
+
+## SESSION UPDATE — 2026-10-26 16:40: Ubuntu guest Caps Lock inversion
+- User reports Caps Lock behavior is inverted in the Ubuntu VM: when Mac Caps Lock appears ON, text behaves lowercase; when OFF, text behaves uppercase. User's physical keyboard is QWERTY and Ubuntu reports XKB layout `us`.
+- This likely matches a known Ubuntu/GNOME/Mutter Caps Lock state-inversion issue; do not assume it is a password typo.
+- Next resume action: in macOS UTM Settings → Input, ensure `Caps Lock treated as a key` is OFF unless there is a specific reason to use raw key behavior. UTM documentation notes this option can leave host/guest Caps Lock states out of sync when enabled.
+- Then in Ubuntu inspect `gsettings get org.gnome.desktop.input-sources xkb-options`. Apply the documented XKB workaround option `shift:both_capslock_cancel` (preserve existing options) so pressing both Shift keys enables Caps Lock and pressing one Shift disables it; use both Shift keys then one Shift to resynchronize state.
+- After fixing the keyboard state, verify `sudo -v` once. Never ask for or store password in chat.
+- Current separate USB blocker remains: UTM dialog `usbredir protocol parse error for USB Device [0403:6043] at 0-2`, and PyFtdi enumeration failing with `ValueError: The device has no langid`. Fix the host/VM keyboard issue first, then reconnect FTDI passthrough once and retest enumeration.
