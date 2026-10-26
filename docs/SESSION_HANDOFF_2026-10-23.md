@@ -195,3 +195,12 @@ No more test commands tonight. The last script returned to the shell prompt and 
 ### Data safety
 - Existing external flash backup remains preserved; no flash write/erase is reported for the Oct 26 session.
 - Never send passwords or reset credentials through chat.
+
+
+## SESSION UPDATE — 2026-10-26 16:23: USB enumeration failure during SPIS probe
+- Latest SPIS health probe failed before reading NNPA registers:
+  `ValueError: The device has no langid (permission issue, no string descriptors supported or device error)`.
+- Because the command presented `[sudo] password for nagaraju:` first, this run appears to have progressed past sudo authentication and then failed in PyUSB/USB descriptor enumeration. Do not reset the account password again solely because of this hardware-tool error.
+- Earlier, sudo PyFtdi enumeration succeeded and listed interfaces `ftdi://ftdi:4232hp:3:4/1` through `/4`. USB bus/device numbers can change after reconnect/VM passthrough changes.
+- Resume next with a read-only `lsusb | grep -i -E 'FTDI|0403'`, then explicitly select the current FTDI interface rather than auto-detection. If the USB descriptor error persists, re-check UTM USB passthrough/reconnect and device permissions before any NNPA/SPIS operation.
+- Do not run inference, burst output reads, reset the CPU, or modify external flash until the interface enumeration issue is cleared.
