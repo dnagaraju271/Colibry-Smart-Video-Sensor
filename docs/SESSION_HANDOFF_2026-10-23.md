@@ -425,3 +425,15 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - Finalizer has an unbounded loop waiting for TX FIFO empty AND SPIS not busy. The SPI RX handler that drains dummy bytes may not execute while the DMA ISR is spinning, depending on interrupt nesting/priority; a stuck error path is also not recovered. Both are plausible failure modes given the proven status changes after a burst.
 - Before patching, inspect SPIS control/status register fields and available FIFO reset/flush mechanism. Goal for patch: enable channel-specific read/write error interrupts, record/clear the corresponding event bits, make finalization bounded, drain pending RX dummy bytes while in the DMA ISR, and restore normal protocol state even on error. Avoid clearing TX FIFO unless the register map documents a valid operation.
 - This is still source-level diagnosis only. No vendor firmware patch has been applied or compiled, and no additional hardware test was performed. Preserve existing flash contents and source backups.
+
+
+## SESSION UPDATE — 2026-10-26 17:30: Likely interrupt-context deadlock identified for next verification
+- User provided the complete burst setup and DMA definitions:
+  - SPIS RX IRQ drains every word when `spis_dma_mode == 1`.
+  - A burst read starts DMA, sets `spis_dma_mode = 1`, enables done interrupt for channel 3, and clears protocol parser state.
+  - DMA IRQ handler calls `spis_burst_finalize()` directly. That finalizer busy-waits without timeout for TX FIFO empty and SPIS busy=0, then disables DMA mode and reenables RX IRQ.
+  - The DMA status register is four 8-bit event fields: done, read error, write error, threshold; the current handler handles only channel done bit.
+- Combined with observed behavior, the leading hypothesis is now a blocked/unsafe completion sequence in interrupt context. While the DMA ISR spins waiting for SPIS idle, it may prevent the RX ISR from draining dummy MOSI bytes, causing the peripheral to remain busy or the command protocol never to recover. This must be verified from interrupt registration/priority and main-loop code before patching.
+- Do not yet assume enabling error interrupts alone is sufficient. Safer candidate architecture: DMA ISR records completion/error status and clears the appropriate status bits; normal/main context performs bounded finalization after the host transaction can finish. Must verify IRQ nesting/priority and how the application main loop can process a pending flag.
+- Next inspect `examples/20_hello_world/main.c` around interrupt registration/vector setup and main loop (`sed -n '35,115p'`, `grep -n -A120 -B20 'int main\|while *(1)' ...`) and `colibry_drivers/SPIS/includes/spis_mmap.h` status/control fields. Then draft an isolated patch file / exact source patch and add its apply/build/rollback instructions to the project repo branch. Don't apply a firmware patch or rebuild until code flow is understood.
+- No current source changes to vendor SDK firmware. Current project branch includes safe host-side diagnostics only. All flash contents are preserved.
