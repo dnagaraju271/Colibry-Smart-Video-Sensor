@@ -303,3 +303,11 @@ No more test commands tonight. The last script returned to the shell prompt and 
   `VDD = 0.900000`, `Bitstream loading: OK`, `System ready. Waiting for SPI input`.
 - Therefore the existing Hello World image is now running and reached the ready state over UART. The earlier ping/pong lines are not evidence of the YOLO detector.
 - Current FTDI URI prefix is `ftdi://ftdi:4232hp:3:2/`; JTAG /1 IDCODE passes. Proceed with a single read-only SPIS health probe on /2 using explicit SDK root. Do not trigger inference or issue output burst until register metadata is shown valid.
+
+
+## SESSION UPDATE — 2026-10-26: SPIS healthy after USB passthrough recovery
+- After USB re-enumeration and reloading `demo.bin` into SRAM, UART confirms `VDD = 0.900000`, `Bitstream loading: OK`, `System ready. Waiting for SPI input`.
+- JTAG /1 at `ftdi://ftdi:4232hp:3:2/1` passes with IDCODE `0x249511C3`.
+- SPIS /2 at `ftdi://ftdi:4232hp:3:2/2` now returns valid register reads: status `0x00000006`, model size 5166 words, input size 5120 words, output-size register `0x03F03C13`, output start `0` before inference, counter `0`, SCU message `0`. This is a healthy pre-inference metadata snapshot; output start 0 is expected before a new inference.
+- Next action: run a single packed-input inference using the newly synced script with `--skip-output-read`, explicit SPIS URI /2, input `test_person_input_nnpa_packed.bin`, timeout 15. This triggers inference but deliberately skips the large output burst.
+- After it completes, inspect inference count/status/output start metadata and immediately run the read-only SPIS health probe once. Do not use the full-output readback or 32-byte chunk reader until after this isolation test and post-inference SPIS health check.
