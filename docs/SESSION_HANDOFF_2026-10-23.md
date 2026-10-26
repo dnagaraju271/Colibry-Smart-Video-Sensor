@@ -295,3 +295,11 @@ No more test commands tonight. The last script returned to the shell prompt and 
 - UART monitor is open on `/dev/ttyUSB2` at 115200. Before the new SRAM load, it printed repeated lines `ping pong`.
 - The existing `demo.bin` was successfully loaded into SRAM at `0x10000000` and CPU start was issued. Loader output: JTAG IDCODE passed, CPU halted, SRAM write Done, Starting CPU. No flash operation.
 - Next: inspect the already-open Picocom terminal for output **after** the CPU start. Do not assume that the earlier `ping pong` lines came from the just-loaded Hello World app. If no Hello World startup appears, identify the correct UART endpoint carefully, then check SPIS only after confirmed startup.
+
+
+## SESSION UPDATE — 2026-10-26 17:05: Hello World UART startup reconfirmed after SRAM reload
+- Picocom on `/dev/ttyUSB2` showed repeated `ping pong` lines from the previously running application before/around the JTAG SRAM reload.
+- After loading `examples/20_hello_world/build/demo.bin` at `0x10000000` via current JTAG `ftdi://ftdi:4232hp:3:2/1`, UART screenshot shows:
+  `VDD = 0.900000`, `Bitstream loading: OK`, `System ready. Waiting for SPI input`.
+- Therefore the existing Hello World image is now running and reached the ready state over UART. The earlier ping/pong lines are not evidence of the YOLO detector.
+- Current FTDI URI prefix is `ftdi://ftdi:4232hp:3:2/`; JTAG /1 IDCODE passes. Proceed with a single read-only SPIS health probe on /2 using explicit SDK root. Do not trigger inference or issue output burst until register metadata is shown valid.
