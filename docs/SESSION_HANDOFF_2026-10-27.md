@@ -121,3 +121,7 @@ These files were seen in the local SDK during the 2026-10-27 SPIS review:
 - `examples/50_person_detector/main.c.before_spis_deferred_finalize_20261027.c`
 
 Keep these backup files intact. Tomorrow, compare the active source against them before changing firmware. The user reviewed a SPIS protocol diff today; don't discard or replace that work without inspecting the actual diff and current working tree first.
+
+
+## Final user request (end of day)
+The user is exhausted and explicitly asked to stop for tonight and save the work. Tomorrow, connect to the board first and resume from this checkpoint using the same paths and today's logs/backups; do not restart the investigation or repeat diagnostics from scratch. Do not claim that uncommitted local files or every terminal log were pushed to GitHub unless verified. This handoff is the persistent resume point.
