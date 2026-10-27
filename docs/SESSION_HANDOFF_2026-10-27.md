@@ -112,3 +112,12 @@ Determine from the existing code whether the camera produces frames in memory, w
 
 ## End-of-day instruction
 Stop debugging for tonight. Do not run more commands now. Keep the VM/project and files in their existing paths. Resume tomorrow with the board connection/state and the existing camera/model source review described above.
+
+
+## Additional local backups recorded in today's work
+These files were seen in the local SDK during the 2026-10-27 SPIS review:
+- `components_drivers/SPIS_PROTOCOL/spis_protocol.c.pre_spis_recovery_20261026_180505`
+- `examples/50_person_detector/main.c.before_deferred_spis_finalize_20261027.c`
+- `examples/50_person_detector/main.c.before_spis_deferred_finalize_20261027.c`
+
+Keep these backup files intact. Tomorrow, compare the active source against them before changing firmware. The user reviewed a SPIS protocol diff today; don't discard or replace that work without inspecting the actual diff and current working tree first.
