@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
+import tf_keras as keras
 from PIL import Image
 
 WIDTH, HEIGHT = 160, 128
@@ -54,7 +55,7 @@ def main() -> int:
     if args.representative_limit < 1:
         parser.error("--representative-limit must be >= 1")
 
-    model = tf.keras.models.load_model(model_path, compile=False)
+    model = keras.models.load_model(model_path, compile=False)
     expected_input = (None, HEIGHT, WIDTH, 1)
     expected_output = (None, 32, 40, 5)
     if tuple(model.input_shape) != expected_input:
