@@ -82,14 +82,17 @@ def build_model() -> keras.Model:
     return model
 
 
+HARD_NEGATIVE_CELLS_PER_IMAGE = 64
+
+
 def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-    """Balance positive and background objectness over images.
+    """Balance positive cells and focus background loss on hard negatives.
 
     Positive objectness loss is averaged over positive cells and then over
-    images containing a person. Background loss is averaged over all negative
-    cells per image, then over images. Unlike top-k-only mining, every
-    background cell contributes a gradient, which is important when the
-    detector otherwise assigns high scores across most of the grid.
+    images containing a person. For each image, background BCE is ranked and
+    the largest 64 negative-cell losses are averaged. This prevents thousands
+    of easy background cells from diluting gradients from the cells that still
+    produce false detections. Box losses remain restricted to positive cells.
     """
     obj = y_true[..., 0]
     logits = y_pred[..., 0]
@@ -107,11 +110,15 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
     )
 
     negative_mask = 1.0 - obj
-    negative_count_per_image = tf.reduce_sum(negative_mask, axis=[1, 2])
-    negative_loss_per_image = (
-        tf.reduce_sum(bce * negative_mask, axis=[1, 2]) /
-        tf.maximum(negative_count_per_image, 1.0)
+    negative_bce = tf.reshape(
+        bce * negative_mask,
+        [tf.shape(bce)[0], GRID_ROWS * GRID_COLS],
     )
+    hard_k = min(HARD_NEGATIVE_CELLS_PER_IMAGE, GRID_ROWS * GRID_COLS - 1)
+    hard_negative_losses = tf.math.top_k(
+        negative_bce, k=hard_k, sorted=False
+    ).values
+    negative_loss_per_image = tf.reduce_mean(hard_negative_losses, axis=1)
     negative_loss = tf.reduce_mean(negative_loss_per_image)
     objectness_loss = pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss
 
@@ -540,7 +547,8 @@ def main() -> None:
         "loss": {
             "name": "hard_negative_giou_detection_loss",
             "negative_loss_weight": NEGATIVE_LOSS_WEIGHT,
-            "design": "positive objectness loss is averaged over positive images; background loss is averaged over all negative cells per image",
+            "design": "positive objectness loss is averaged over positive images; mean BCE over the 64 highest-loss background cells per image",
+            "hard_negative_cells_per_image": HARD_NEGATIVE_CELLS_PER_IMAGE,
         },
         "training": train_summary,
         "validation": val_summary,
