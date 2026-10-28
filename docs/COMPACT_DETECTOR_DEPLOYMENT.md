@@ -23,6 +23,31 @@ python scripts/model/train_colibry_person_detector.py \
 If the contract check passes, repeat without --check-only and review
 training_report.json before using the model.
 
+### Controlled rerun after a model/trainer mismatch
+
+Do not reuse the existing `wide48_pos2` output directory: the saved report
+describes 48 channels and 4 residual blocks, while this trainer builds 24
+channels and 6 residual blocks. The report/model pair cannot be treated as a
+reproducible match until their provenance is confirmed.
+
+For the current UTM workspace, run the experiment into a **new, separate**
+output directory so no existing model or report is overwritten:
+
+~~~bash
+cd ~/Colibry-Smart-Video-Sensor-git
+python scripts/model/train_colibry_person_detector.py \
+  --dataset /mnt/utm/dataset/coco_person_hardneg/processed \
+  --output-dir "$HOME/models/colibry_yolo/workspace/runs/colibry_person_detector_repro_20261028" \
+  --check-only
+~~~
+
+Only if that check passes, run the same command without `--check-only`.
+The report now records architecture and training configuration. Compare the
+new report's architecture and validation metrics against the old report before
+exporting anything. In particular, do not proceed to TFLite export or board
+testing if known-empty validation images still produce frequent detections or
+precision remains very low. This experiment does not touch firmware or flash.
+
 ## 2. Export fully-int8 TFLite
 
 The exporter uses training images as representative data and writes the quantized
