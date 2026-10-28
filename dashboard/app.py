@@ -87,7 +87,7 @@ def update_detections(update: DetectionUpdate) -> dict[str, Any]:
         _latest.update({
             "connected": True,
             "person_count": update.person_count,
-            "detections": [box.model_dump() for box in update.detections],
+            "detections": [box.dict() for box in update.detections],
             "updated_at": now,
             "last_seen_monotonic": time.monotonic(),
             "source": update.source,
