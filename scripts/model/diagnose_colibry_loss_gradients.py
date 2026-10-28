@@ -142,8 +142,38 @@ def main() -> int:
         raw = model(xb, training=False)
         loss_terms = components(yb, raw)
 
+    # Compare whether the positive and hard-negative objectness terms push
+    # shared parameters in similar or opposing directions.
+    pos_grads = tape.gradient(loss_terms["positive_objectness_bce"], variables)
+    neg_grads = tape.gradient(loss_terms["hard_negative_objectness_bce"], variables)
+
+    def cosine_for(selected_vars: list[Any], left: list[Any], right: list[Any]) -> dict[str, Any]:
+        left_by_id = {id(v): g for v, g in zip(variables, left)}
+        right_by_id = {id(v): g for v, g in zip(variables, right)}
+        lg = [left_by_id[id(v)] for v in selected_vars if left_by_id[id(v)] is not None and right_by_id[id(v)] is not None]
+        rg = [right_by_id[id(v)] for v in selected_vars if left_by_id[id(v)] is not None and right_by_id[id(v)] is not None]
+        if not lg:
+            return {"cosine_similarity": None, "note": "No shared gradient tensors"}
+        lflat = tf.concat([tf.reshape(g, [-1]) for g in lg], axis=0)
+        rflat = tf.concat([tf.reshape(g, [-1]) for g in rg], axis=0)
+        denom = tf.linalg.norm(lflat) * tf.linalg.norm(rflat)
+        cosine = tf.where(denom > 0, tf.reduce_sum(lflat * rflat) / denom, tf.constant(0.0))
+        return {
+            "cosine_similarity": float(cosine.numpy()),
+            "left_gradient_norm": float(tf.linalg.norm(lflat).numpy()),
+            "right_gradient_norm": float(tf.linalg.norm(rflat).numpy()),
+            "interpretation_guide": "near +1 = aligned; near 0 = mostly orthogonal; near -1 = opposing",
+        }
+
+    objectness_gradient_alignment = {
+        "shared_backbone": cosine_for(backbone_vars, pos_grads, neg_grads),
+        "output_head": cosine_for(head_vars, pos_grads, neg_grads),
+        "all_trainable": cosine_for(variables, pos_grads, neg_grads),
+    }
+
     report: dict[str, Any] = {
         "purpose": "gradient diagnosis only; no optimizer step or model modification",
+        "positive_vs_hard_negative_gradient_alignment": objectness_gradient_alignment,
         "model": str(model_path),
         "subset": {
             "images": len(indices),
