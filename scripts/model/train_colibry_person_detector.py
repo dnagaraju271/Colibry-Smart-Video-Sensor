@@ -590,7 +590,7 @@ def main() -> None:
     if best_weights.exists():
         model.load_weights(str(best_weights))
     model.save_weights(str(args.output_dir / "final.weights.h5"))
-    model.save(str(args.output_dir / "colibry_person_detector.keras"), include_optimizer=False)
+    model.save(str(args.output_dir / "colibry_person_detector.keras"))
 
     raw = model.predict(x_val, batch_size=args.batch_size, verbose=1)
     decoded = [decode_predictions(item) for item in raw]
