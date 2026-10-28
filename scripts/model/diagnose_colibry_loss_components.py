@@ -73,7 +73,7 @@ def main() -> int:
         "negative_target_cells": int(neg_mask.sum()),
         "objectness_logits": {
             "positive_target_cells": stats(logits[pos_mask]),
-            "negative_target_cells_in_positive_images": stats(logits[positive_image][:, :, :][np.broadcast_to(positive_image[:, None, None], logits.shape) & np.broadcast_to(neg_mask, logits.shape)]),
+            "negative_target_cells_in_positive_images": stats(logits[neg_mask & np.broadcast_to(positive_image[:, None, None], logits.shape)]),
             "all_negative_target_cells": stats(logits[neg_mask]),
         },
         "objectness_probabilities": {
