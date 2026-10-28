@@ -83,11 +83,13 @@ def build_model() -> keras.Model:
 
 
 def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-    """Balance positive images against hard negatives instead of rewarding constant low scores.
+    """Balance positive and background objectness over images.
 
-    Positive objectness losses are averaged over images that contain positives.
-    Negative losses are averaged over images, using the highest-loss background cells.
-    The independent averages avoid the earlier loss's positive/negative count imbalance.
+    Positive objectness loss is averaged over positive cells and then over
+    images containing a person. Background loss is averaged over all negative
+    cells per image, then over images. Unlike top-k-only mining, every
+    background cell contributes a gradient, which is important when the
+    detector otherwise assigns high scores across most of the grid.
     """
     obj = y_true[..., 0]
     logits = y_pred[..., 0]
@@ -104,26 +106,11 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
         tf.maximum(tf.reduce_sum(positive_image_mask), 1.0)
     )
 
-    def hard_negatives_for_image(inputs: tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
-        image_bce, image_obj = inputs
-        losses = tf.boolean_mask(
-            tf.reshape(image_bce, [-1]),
-            tf.reshape(image_obj, [-1]) < 0.5,
-        )
-        n = tf.size(losses)
-
-        def calculate() -> tf.Tensor:
-            image_positive_count = tf.reduce_sum(image_obj)
-            k = tf.maximum(tf.cast(image_positive_count * 3.0, tf.int32), 32)
-            k = tf.minimum(tf.minimum(k, 128), n)
-            return tf.reduce_mean(tf.math.top_k(losses, k=k, sorted=False).values)
-
-        return tf.cond(n > 0, calculate, lambda: tf.constant(0.0, tf.float32))
-
-    negative_loss_per_image = tf.map_fn(
-        hard_negatives_for_image,
-        (bce, obj),
-        fn_output_signature=tf.float32,
+    negative_mask = 1.0 - obj
+    negative_count_per_image = tf.reduce_sum(negative_mask, axis=[1, 2])
+    negative_loss_per_image = (
+        tf.reduce_sum(bce * negative_mask, axis=[1, 2]) /
+        tf.maximum(negative_count_per_image, 1.0)
     )
     negative_loss = tf.reduce_mean(negative_loss_per_image)
     objectness_loss = pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss
