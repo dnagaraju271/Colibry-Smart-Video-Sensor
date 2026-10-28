@@ -26,12 +26,16 @@ def main() -> int:
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--negative-loss-weight", type=float, default=1.0,
+                        help="Multiplier for hard-negative objectness BCE; allows controlled loss-weight experiments.")
     args = parser.parse_args()
 
     if args.positive < 1 or args.empty < 1 or args.epochs < 1 or args.batch_size < 1:
         parser.error("positive, empty, epochs and batch-size must all be positive")
     if args.learning_rate <= 0:
         parser.error("learning-rate must be positive")
+    if args.negative_loss_weight <= 0:
+        parser.error("negative-loss-weight must be positive")
 
     dataset = args.dataset.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
@@ -58,6 +62,8 @@ def main() -> int:
 
     np.random.seed(42)
     tf.random.set_seed(42)
+    # Set the trainer module global before compile so the loss uses this trial value.
+    detector.NEGATIVE_LOSS_WEIGHT = args.negative_loss_weight
     model = detector.build_model()
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=args.learning_rate),
@@ -97,6 +103,7 @@ def main() -> int:
         "epochs_requested": args.epochs,
         "epochs_completed": len(loss_values),
         "learning_rate": args.learning_rate,
+        "negative_loss_weight": args.negative_loss_weight,
         "initial_train_loss": loss_values[0] if loss_values else None,
         "final_train_loss": loss_values[-1] if loss_values else None,
         "minimum_train_loss": min(loss_values) if loss_values else None,
