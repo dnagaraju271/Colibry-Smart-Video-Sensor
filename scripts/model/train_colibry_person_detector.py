@@ -82,12 +82,17 @@ def build_model() -> keras.Model:
     return model
 
 
-def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-    """Balance positive images against hard negatives instead of rewarding constant low scores.
+HARD_NEGATIVE_CELLS_PER_IMAGE = 64
 
-    Positive objectness losses are averaged over images that contain positives.
-    Negative losses are averaged over images, using the highest-loss background cells.
-    The independent averages avoid the earlier loss's positive/negative count imbalance.
+
+def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+    """Balance positive cells and focus background loss on hard negatives.
+
+    Positive objectness loss is averaged over positive cells and then over
+    images containing a person. For each image, background BCE is ranked and
+    the largest 64 negative-cell losses are averaged. This prevents thousands
+    of easy background cells from diluting gradients from the cells that still
+    produce false detections. Box losses remain restricted to positive cells.
     """
     obj = y_true[..., 0]
     logits = y_pred[..., 0]
@@ -104,27 +109,16 @@ def hard_negative_giou_detection_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> t
         tf.maximum(tf.reduce_sum(positive_image_mask), 1.0)
     )
 
-    def hard_negatives_for_image(inputs: tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
-        image_bce, image_obj = inputs
-        losses = tf.boolean_mask(
-            tf.reshape(image_bce, [-1]),
-            tf.reshape(image_obj, [-1]) < 0.5,
-        )
-        n = tf.size(losses)
-
-        def calculate() -> tf.Tensor:
-            image_positive_count = tf.reduce_sum(image_obj)
-            k = tf.maximum(tf.cast(image_positive_count * 3.0, tf.int32), 32)
-            k = tf.minimum(tf.minimum(k, 128), n)
-            return tf.reduce_mean(tf.math.top_k(losses, k=k, sorted=False).values)
-
-        return tf.cond(n > 0, calculate, lambda: tf.constant(0.0, tf.float32))
-
-    negative_loss_per_image = tf.map_fn(
-        hard_negatives_for_image,
-        (bce, obj),
-        fn_output_signature=tf.float32,
+    negative_mask = 1.0 - obj
+    negative_bce = tf.reshape(
+        bce * negative_mask,
+        [tf.shape(bce)[0], GRID_ROWS * GRID_COLS],
     )
+    hard_k = min(HARD_NEGATIVE_CELLS_PER_IMAGE, GRID_ROWS * GRID_COLS - 1)
+    hard_negative_losses = tf.math.top_k(
+        negative_bce, k=hard_k, sorted=False
+    ).values
+    negative_loss_per_image = tf.reduce_mean(hard_negative_losses, axis=1)
     negative_loss = tf.reduce_mean(negative_loss_per_image)
     objectness_loss = pos_loss + NEGATIVE_LOSS_WEIGHT * negative_loss
 
@@ -472,6 +466,8 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--negative-loss-weight", type=float, default=1.0,
+                        help="Multiplier for background objectness loss; test values above 1 to penalize false positives more strongly.")
     parser.add_argument("--min-person-height-px", type=int, default=24)
     parser.add_argument("--pseudo-confidence", type=float, default=0.35)
     parser.add_argument("--check-only", action="store_true")
@@ -479,11 +475,14 @@ def main() -> None:
 
     if args.epochs < 1 or args.batch_size < 1 or args.learning_rate <= 0:
         parser.error("epochs and batch-size must be positive, as must learning-rate")
+    if args.negative_loss_weight <= 0:
+        parser.error("negative-loss-weight must be positive")
     if not 0.0 <= args.pseudo_confidence <= 1.0:
         parser.error("pseudo-confidence must be between 0 and 1")
 
-    global MIN_PERSON_HEIGHT_PX
+    global MIN_PERSON_HEIGHT_PX, NEGATIVE_LOSS_WEIGHT
     MIN_PERSON_HEIGHT_PX = args.min_person_height_px
+    NEGATIVE_LOSS_WEIGHT = args.negative_loss_weight
     args.dataset = args.dataset.expanduser().resolve()
     args.output_dir = args.output_dir.expanduser().resolve()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -524,11 +523,32 @@ def main() -> None:
             "grid_height": GRID_ROWS,
             "values_per_cell": VALUES_PER_CELL,
         },
+        "architecture": {
+            "model_name": model.name,
+            "stem_channels": 8,
+            "feature_channels": 24,
+            "residual_blocks": 6,
+            "downsampling_factor": 4,
+            "output_activation": "linear",
+            "prediction_channels": VALUES_PER_CELL,
+            "parameter_count": model.count_params(),
+        },
+        "training_config": {
+            "epochs_requested": args.epochs,
+            "batch_size": args.batch_size,
+            "learning_rate_initial": args.learning_rate,
+            "negative_loss_weight": NEGATIVE_LOSS_WEIGHT,
+            "min_person_height_px": MIN_PERSON_HEIGHT_PX,
+            "teacher_cache_enabled": bool(teacher_train),
+            "pseudo_confidence": args.pseudo_confidence,
+            "random_seed": 42,
+        },
         "model_parameters": model.count_params(),
         "loss": {
             "name": "hard_negative_giou_detection_loss",
             "negative_loss_weight": NEGATIVE_LOSS_WEIGHT,
-            "design": "positive-image and hard-negative image losses are averaged separately",
+            "design": "positive objectness loss is averaged over positive images; mean BCE over the 64 highest-loss background cells per image",
+            "hard_negative_cells_per_image": HARD_NEGATIVE_CELLS_PER_IMAGE,
         },
         "training": train_summary,
         "validation": val_summary,
@@ -571,7 +591,7 @@ def main() -> None:
     if best_weights.exists():
         model.load_weights(str(best_weights))
     model.save_weights(str(args.output_dir / "final.weights.h5"))
-    model.save(str(args.output_dir / "colibry_person_detector.keras"), include_optimizer=False)
+    model.save(str(args.output_dir / "colibry_person_detector.keras"))
 
     raw = model.predict(x_val, batch_size=args.batch_size, verbose=1)
     decoded = [decode_predictions(item) for item in raw]

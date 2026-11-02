@@ -62,3 +62,6 @@ dataset/coco_person_1000/processed/download_failures.csv
 dataset/coco_person_1000/processed/failures.csv
 tests/compiler_smoke/detector_baseline/
 tests/compiler_smoke/dense_detector_baseline/
+
+# Allow the INT8 model for ASYGN web evaluation
+!/models/colibry_person_detector_int8.tflite
