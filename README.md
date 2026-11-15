@@ -13,20 +13,19 @@ The intended output is person bounding boxes.
 
 ## Current Progress
 
-- Prepared a COCO-based person-detection dataset manifest.
-- Converted selected images and labels to grayscale 160 x 128 format.
-- Audited dataset labels and reviewed selected empty-label cases.
-- Tested the Colibry compiler with the SDK's reference VWW model.
-- Ran a synthetic model conversion and compiler smoke test.
-- Configured Git version control and GitHub.
+- Prepared a COCO-based person-detection dataset manifest and grayscale 160 x 128 preprocessing workflow.
+- Recovered the original 35,280-byte INT8 TFLite grid detector and verified its actual input/output tensor shapes and quantization metadata.
+- Recompiled that exact TFLite file with Colibry NPU compiler 0.2.1 and reproduced the older project's 14,224-byte NNPA artifact byte-for-byte (model ID `0x3F7B`).
+- Investigated the historical flash deployment recipe and documented its expected sector image hashes.
+- Inspected the SDK camera/ISP path and the project's NNPA board diagnostics.
+- Identified the current FTDI/PyFtdi access issue preventing a fresh read-only flash verification.
 
 ## Important Limitations
 
-The synthetic model is not a trained person detector.
-Compiler acceptance does not demonstrate detection accuracy or successful
-inference on the physical ColibryNPU board.
-
-Physical-board inference and camera integration remain to be tested.
+Host-side compilation and tensor metadata verification do not demonstrate
+person-detection accuracy or successful inference on the physical ColibryNPU
+board. The current contents of flash sector `0x20000` remain unverified,
+and live camera-to-NNPA inference has not yet been demonstrated.
 
 ## Repository Structure
 
@@ -40,12 +39,12 @@ from version control.
 
 ## Next Milestones
 
-1. Confirm which detector architectures and output operations the compiler supports.
-2. Build and train a small person detector compatible with those constraints.
-3. Quantize and compile the trained model.
-4. Evaluate accuracy and model size.
-5. Test inference on the physical evaluation board.
-6. Integrate camera input and bounding-box visualization.
+1. Resolve PyFtdi USB descriptor/permission access without changing flash.
+2. Read flash sector `0x20000` and compare it with the known backup/replacement hashes.
+3. Confirm the active firmware's NNPA model configuration and runtime input/output sizes.
+4. Establish the camera/ISP configuration that delivers the detector's 160 x 128 grayscale input.
+5. Run controlled physical-board inference and validate output dequantization and grid decoding.
+6. Demonstrate person and empty-scene tests using live camera frames.
 
 ## Technology
 
@@ -93,8 +92,10 @@ The script reads live NNPA input and output registers, sends the packed input,
 requests one inference, and saves the complete output feature-map bytes. It
 does not flash or restart the board. Use `--port ftdi://...` only when you
 need to select a specific current FTDI URI. A successful inference confirms
-execution, not person-detection accuracy: the current YOLO backbone produces a
-feature map, and detection decoding is a separate step.
+execution, not person-detection accuracy: a feature-map capture is not a
+decoded person detection. This diagnostic flow is separate from the recovered
+grid-detector artifact documented below; do not treat an older YOLO feature-map
+capture as validation of the recovered `0x3F7B` person detector.
 
 See [the board inference script](scripts/board/dump_nnpa_featuremap.py).
 
