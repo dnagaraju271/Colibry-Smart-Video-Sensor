@@ -65,3 +65,7 @@ tests/compiler_smoke/dense_detector_baseline/
 
 # Keep the professor demo's exported TFLite model versioned when generated
 !experiments/professor_demo/task2_simple_cnn/model/simple_person_cnn.tflite
+
+# Local generated files
+/Colibry-Smart-Video-Sensor/
+/experiments/professor_demo/task1_c_blinker/build/

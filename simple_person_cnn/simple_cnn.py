@@ -12,8 +12,7 @@ from tensorflow.keras import layers, models
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-EXPERIMENT_DIR = SCRIPT_DIR.parent
-DEFAULT_DATA_DIR = EXPERIMENT_DIR / "task3_dataset" / "images"
+DEFAULT_DATA_DIR = SCRIPT_DIR / "dataset"
 MODEL_DIR = SCRIPT_DIR / "model"
 MODEL_PATH = MODEL_DIR / "simple_person_cnn.keras"
 TFLITE_PATH = MODEL_DIR / "simple_person_cnn.tflite"
@@ -83,7 +82,7 @@ def train(data_dir: Path, epochs: int) -> None:
             if not class_dir.is_dir():
                 raise FileNotFoundError(
                     f"Missing dataset folder: {class_dir}\n"
-                    "See task3_dataset/README.md for the required structure."
+                    "See simple_person_cnn/README.md for the required dataset structure."
                 )
 
     if count_images(train_dir) == 0 or count_images(validation_dir) == 0:
