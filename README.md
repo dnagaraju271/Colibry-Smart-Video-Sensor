@@ -165,3 +165,24 @@ explicit compiler-run safety gate.
 
 A successful structural inspection does not prove NNPA compatibility or
 physical-board inference. The checker does not flash the board.
+
+## Latest detector artifact recovery (2026-11-15)
+
+The original 35,280-byte INT8 detector TFLite was recovered and inspected.
+Its verified input is `[1,128,160,1]` INT8 (scale 1/255, zero-point -128);
+its output is `[1,32,40,5]` INT8 (scale 0.058669433, zero-point 87).
+
+Colibry NPU compiler 0.2.1 reproduced the historical 14,224-byte NNPA artifact
+with model ID `0x3F7B`. The reproduced artifact SHA-256 is
+`fe9897ff4694328b22fb3fc91fba9097ca353a18365c197f196011ed14be9fd2`.
+A different NNPA file in the current working clone has a different hash and
+must not be assumed identical.
+
+The historical flash deployment recipe targets sector 2 at `0x20000`, but
+the current flash contents have not been independently verified. Ubuntu sees
+the FTDI USB bridge (`0403:6043`), while PyFtdi currently fails on USB string
+descriptor access. No flash erase or programming was performed during the
+2026-11-15 verification attempt.
+
+See [the detector artifact recovery and board deployment audit](docs/DETECTOR_ARTIFACT_RECOVERY_2026-11-15.md)
+and [the detailed development progress](docs/DEVELOPMENT_PROGRESS.md).
