@@ -18,19 +18,19 @@ Dataset folders are in `task3_dataset/images/`. After photographs have been coll
 
 ```bash
 python3 -m pip install tensorflow==2.18.1
-python3 experiments/professor_demo/task2_simple_cnn/simple_cnn.py --epochs 5
+python3 experiments/simple_person_cnn/simple_cnn.py --epochs 5
 ```
 
 The script trains the model, evaluates it on the validation images, and writes:
 - `simple_person_cnn.keras`
 - `simple_person_cnn.tflite`
 
-Both files are written to `experiments/professor_demo/task2_simple_cnn/model/`.
+Both files are written to `experiments/simple_person_cnn/model/`.
 
 To classify one image after training:
 
 ```bash
-python3 experiments/professor_demo/task2_simple_cnn/simple_cnn.py --predict /path/to/image.jpg
+python3 experiments/simple_person_cnn/simple_cnn.py --predict /path/to/image.jpg
 ```
 
 This is a small person / no-person classification experiment, not the full bounding-box detector.
