@@ -187,3 +187,6 @@ descriptor access. No flash erase or programming was performed during the
 
 See [the detector artifact recovery and board deployment audit](docs/DETECTOR_ARTIFACT_RECOVERY_2026-11-15.md)
 and [the detailed development progress](docs/DEVELOPMENT_PROGRESS.md).
+
+For the exact resume point and first read-only FTDI diagnostic for the next session,
+see the [2026-11-15 session handoff](docs/SESSION_HANDOFF_2026-11-15.md).
