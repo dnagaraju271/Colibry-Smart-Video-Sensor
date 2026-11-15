@@ -62,3 +62,6 @@ dataset/coco_person_1000/processed/download_failures.csv
 dataset/coco_person_1000/processed/failures.csv
 tests/compiler_smoke/detector_baseline/
 tests/compiler_smoke/dense_detector_baseline/
+
+# Keep the professor demo's exported TFLite model versioned when generated
+!experiments/professor_demo/task2_simple_cnn/model/simple_person_cnn.tflite
