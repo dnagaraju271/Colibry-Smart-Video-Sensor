@@ -1,13 +1,37 @@
 # Task 1 — C LED blinker
 
-The LED blinker has already been tested successfully on the Colibry board.
+A minimal C LED-blinker application for the **ASYGN Colibry EvalboardTiny**.
 
-Place the exact working, board-specific C source file in this folder as:
+## Board configuration
 
-```text
-main.c
+- SDK board selection: `EVBTINY`
+- LED control: SDK-provided `USER_LED_ON()` and `USER_LED_OFF()` macros
+- The Evalboard LED is active-low (ON drives the LED signal LOW).
+- Blink interval: 300 ms ON, 300 ms OFF.
+
+The source follows the initialization and LED-control calls used by the SDK example `examples/10_uart_printf_blink`, but removes the UART print loop so the demonstration focuses only on the LED.
+
+## Files
+
+- `main.c` — minimal application
+- `Makefile` — build configuration
+
+## Build
+
+The Makefile expects the SDK at `~/colibryNPU_SDK` by default. From this directory:
+
+```bash
+make
 ```
 
-Do not substitute guessed GPIO names or generic placeholder functions: this demonstration should use the same source and SDK calls that were confirmed to work on the physical board.
+If the SDK is installed elsewhere:
 
-Then commit and push the verified source so it can be retrieved on the Ubuntu board computer with `git pull origin main`.
+```bash
+make COLIBRY_SDK_PATH=/path/to/colibryNPU_SDK
+```
+
+## Hardware test
+
+Build the application using the SDK toolchain, program the generated application image to the Colibry EvalboardTiny using the normal board flashing procedure, and confirm that the red user LED blinks at approximately 1.7 cycles per second.
+
+**Status:** Source and Makefile committed. The files still need to be built and tested from this repository checkout on the target board before the task can be marked hardware-verified.
