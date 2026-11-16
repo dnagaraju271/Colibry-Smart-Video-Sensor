@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Train a compact grayscale person detector for the ColibryNPU target.
 
-Input convention: 160 pixels wide x 128 pixels high, one grayscale channel.
+Input convention: 160 pixels wide x 120 pixels high, one grayscale channel.
 This is a hardware-oriented grid detector, not the original YOLOv8 graph.
 Optional YOLO teacher boxes can supplement ground truth on positive images only.
 """
@@ -20,10 +20,10 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE_WIDTH = 160
-IMAGE_HEIGHT = 128
+IMAGE_HEIGHT = 120
 INPUT_CHANNELS = 1
 GRID_COLS = 40
-GRID_ROWS = 32
+GRID_ROWS = 30
 VALUES_PER_CELL = 5  # objectness, x offset, y offset, width, height
 MIN_PERSON_HEIGHT_PX = 24
 NEGATIVE_LOSS_WEIGHT = 1.0
