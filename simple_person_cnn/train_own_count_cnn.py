@@ -37,13 +37,14 @@ def source_group(source_filename: str) -> str:
     return match.group(1) if match else source_filename
 
 
-def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str]]]:
+def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str]], int]:
     if not path.is_file():
         raise FileNotFoundError(f"Dataset archive not found: {path}")
 
     images: list[np.ndarray] = []
     labels: list[int] = []
     records: list[dict[str, str]] = []
+    pending_zero_person_skipped = 0
 
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
@@ -77,6 +78,7 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
                         raise ValueError(
                             f"Manifest line {line_no}: pending originals must have count 0"
                         )
+                    pending_zero_person_skipped += 1
                     continue
 
                 if class_name not in CLASS_TO_ID:
@@ -109,7 +111,12 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
 
     if not images:
         raise RuntimeError("No labeled images found in the archive manifest")
-    return np.stack(images).astype(np.float32), np.asarray(labels, np.int32), records
+    return (
+        np.stack(images).astype(np.float32),
+        np.asarray(labels, np.int32),
+        records,
+        pending_zero_person_skipped,
+    )
 
 
 def stratified_split(
@@ -216,7 +223,7 @@ def main() -> None:
     archive_path = args.archive.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
     tf.keras.utils.set_random_seed(args.seed)
-    x, y, records = load_archive(archive_path)
+    x, y, records, pending_zero_person_skipped = load_archive(archive_path)
     train_idx, val_idx = stratified_split(y, args.validation_fraction, args.seed)
     x_train, y_train = x[train_idx], y[train_idx]
     x_val, y_val = x[val_idx], y[val_idx]
@@ -237,6 +244,7 @@ def main() -> None:
     summary = {
         "archive": str(archive_path),
         "total_images": int(len(x)),
+        "pending_zero_person_entries_skipped": int(pending_zero_person_skipped),
         "original_image_size": [160, 120],
         "model_input_shape": [IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS],
         "classes": CLASS_NAMES,
