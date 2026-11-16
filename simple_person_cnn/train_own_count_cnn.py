@@ -68,9 +68,19 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
                 seen_outputs.add(output_file)
 
                 class_name = PurePosixPath(output_file).parts[0]
+                count = int(row["visible_person_count"])
+
+                # Zero-person originals are intentionally pending and must not
+                # be imported into this 1/2/3-person experiment yet.
+                if class_name == "pending_for_later_originals":
+                    if count != 0:
+                        raise ValueError(
+                            f"Manifest line {line_no}: pending originals must have count 0"
+                        )
+                    continue
+
                 if class_name not in CLASS_TO_ID:
                     raise ValueError(f"Manifest line {line_no}: unsupported class {class_name}")
-                count = int(row["visible_person_count"])
                 if count != CLASS_TO_ID[class_name] + 1:
                     raise ValueError(
                         f"Manifest line {line_no}: count {count} conflicts with {class_name}"
