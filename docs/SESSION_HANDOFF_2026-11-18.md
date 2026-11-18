@@ -838,3 +838,45 @@ Batch 1 generated and built:
 ### Next action
 
 Run batch_01.bin through JTAG SRAM loader with continuous UART capture to unique `build/batch_01_uart.log`. Expect 16 RESULT rows for global dataset indices 16-31. Wait 45 seconds after loader exit. Verify loader exit 0 and RESULT count 16, then summarize with expected-images 16 and write `batch_01_results.csv`. Do not generate batch 2 until batch 1 execution and log are verified.
+
+## Physical board inference — batch 1 / dataset indices 16-31 — 2026-11-18
+
+User loaded preserved `build/batches/batch_01.bin` using the JTAG SRAM loader:
+- JTAG IDCODE 0x249511c3.
+- CPU halt, `Writing to SRAM... Done`, `Starting CPU`.
+- Loader exit code 0.
+- UART captured 16 RESULT rows; `RESULT COUNT` = 16; firmware printed `ALL 16 NNPA INFERENCE CALLS COMPLETED`.
+
+Per-image results:
+- 16: 2_person -> 2_person, logits [151,228,14], correct.
+- 17: 2_person -> 2_person, logits [125,238,86], correct.
+- 18: 1_person -> 1_person, logits [212,159,56], correct.
+- 19: 1_person -> 1_person, logits [206,171,66], correct.
+- 20: 1_person -> 1_person, logits [204,173,62], correct.
+- 21: 2_person -> 1_person, logits [223,166,26], incorrect.
+- 22: 2_person -> 2_person, logits [160,210,71], correct.
+- 23: 1_person -> 1_person, logits [202,158,66], correct.
+- 24: 1_person -> 1_person, logits [213,150,58], correct.
+- 25: 1_person -> 1_person, logits [212,161,32], correct.
+- 26: 1_person -> 1_person, logits [242,130,28], correct.
+- 27: 1_person -> 1_person, logits [209,153,67], correct.
+- 28: 1_person -> 1_person, logits [245,138,41], correct.
+- 29: 1_person -> 1_person, logits [255,136,37], correct.
+- 30: 1_person -> 1_person, logits [255,139,42], correct.
+- 31: 1_person -> 1_person, logits [255,139,37], correct.
+
+Batch 1 expected counts: 1_person=12, 2_person=4, 3_person=0. Correct 15/16 = 93.75%. Confusion matrix rows=true, columns=predicted [1_person,2_person,3_person]: `[[12,0,0],[1,3,0],[0,0,0]]`.
+
+Cumulative batches 0 and 1 (global indices 0-31): 32 results, 29 correct = 90.625%. Combined confusion matrix: `[[20,0,0],[2,6,0],[0,1,3]]`.
+
+Important: the full-dataset board audit uses the same 71 images used for prior training/model development; do not present this as independent test accuracy/generalization. These results show current model predictions on training/development data only.
+
+### Current artifacts
+
+- Batch 0 preserved at `build/batches/batch_00.bin`, SHA-256 `cd8a5fd4bb0fcb8210dd8d18cf024737214ad8ef28d9c7793d7e3613f80796c5`; UART log `build/batch_00_uart.log`; CSV `build/batch_00_results.csv`.
+- Batch 1 preserved at `build/batches/batch_01.bin`, SHA-256 `2306e5b95f1a45bdb02aa72eed74b46230c9fda9f5a8f71b181a6dd152eb5fd5`; UART log `build/batch_01_uart.log`.
+- Batch 1 was successfully executed from SRAM; no external flash modified.
+
+### Next action
+
+Run `python3 summarize_batch_results.py build/batch_01_uart.log --expected-images 16 --csv build/batch_01_results.csv`, then build batch 2 with `BATCH_START=32 BATCH_SIZE=16`. Preserve the binary to `build/batches/batch_02.bin`, calculate/store its SHA-256, and confirm `riscv32-corev-elf-size` total <=128KiB before loading. Only proceed after batch 1 log summary has all 16 indices and zero errors.
