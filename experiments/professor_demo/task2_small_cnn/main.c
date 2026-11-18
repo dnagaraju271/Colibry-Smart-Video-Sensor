@@ -111,6 +111,10 @@ static int run_one_sample(uint32_t sample_index)
     NNPA_reg->nnpa_control.fields.cpu_mem_access = 1;
 
     output_start = NNPA_reg->ofmap_start_maddr.word;
+    if (output_start == 0u) {
+        printf("ERROR: NNPA output start address is zero.\\n");
+        return 3;
+    }
     output_size = NNPA_reg->rd_ofmap_size.word;
     output_width = NNPA_reg->rd_ofmap_size.fields.ofmap_width + 1u;
     output_height = NNPA_reg->rd_ofmap_size.fields.ofmap_height + 1u;
