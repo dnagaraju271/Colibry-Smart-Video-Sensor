@@ -62,7 +62,9 @@ static int run_one_sample(uint32_t sample_index)
     uint8_t logits[OWN_COUNT_CLASS_COUNT];
     uint32_t predicted_class = 0;
 
-    printf("\n===== SAMPLE %lu =====\n", (unsigned long)sample_index);
+    printf("\n===== SAMPLE %lu / DATASET %lu =====\n",
+           (unsigned long)sample_index,
+           (unsigned long)own_count_dataset_indices[sample_index]);
     printf("File: %s\n", own_count_sample_names[sample_index]);
     printf("Expected class: %s\n", own_count_expected_classes[sample_index]);
 
@@ -161,10 +163,18 @@ static int run_one_sample(uint32_t sample_index)
            predicted_class == 0u ? "1_person" :
            predicted_class == 1u ? "2_person" : "3_person");
 
-    if (predicted_class == sample_index) {
-        printf("HOST LABEL COMPARISON: MATCH\n");
+    printf("RESULT,%lu,%s,%lu,%u,%u,%u\n",
+           (unsigned long)own_count_dataset_indices[sample_index],
+           own_count_expected_classes[sample_index],
+           (unsigned long)predicted_class,
+           (unsigned int)logits[0],
+           (unsigned int)logits[1],
+           (unsigned int)logits[2]);
+
+    if (predicted_class == own_count_expected_class_ids[sample_index]) {
+        printf("LABEL COMPARISON: MATCH\n");
     } else {
-        printf("HOST LABEL COMPARISON: MISMATCH\n");
+        printf("LABEL COMPARISON: MISMATCH\n");
     }
 
     return 0;
