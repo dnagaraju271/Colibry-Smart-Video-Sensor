@@ -767,3 +767,17 @@ This is build-only evidence. The batch 0 binary has NOT yet been loaded onto the
 ### Next action
 
 First copy `build/own_count_cnn_sram_demo.bin` to a unique preserved file `build/batches/batch_00.bin` and verify its hash is `cd8a5fd4bb0fcb8210dd8d18cf024737214ad8ef28d9c7793d7e3613f80796c5`. Then run SRAM loader with UART capture using `~/colibry-flash-env/bin/python`, capture results from UART. Do not generate later batches until batch_00.bin is safely copied. Do not run toflash or make nnpa.
+
+## Batch 0 binary preserved and checksum verified — 2026-11-18
+
+User copied the first 16-image SRAM firmware binary to `build/batches/batch_00.bin` using a no-clobber copy operation.
+
+- Preserved binary: `projects/own_dataset_person_count_cnn/board_firmware/build/batches/batch_00.bin` (relative to repository root from firmware directory).
+- SHA-256: `cd8a5fd4bb0fcb8210dd8d18cf024737214ad8ef28d9c7793d7e3613f80796c5`.
+- Hash exactly matches expected batch 0 build artifact.
+- Copy command printed a harmless portability warning about no-clobber behavior; the output file exists and hash verified correctly.
+- Batch 0 has not yet been loaded onto the board. No flash operation occurred.
+
+### Next action
+
+Load `build/batches/batch_00.bin` to volatile SRAM at 0x10000000 using the JTAG SRAM loader with `~/colibry-flash-env/bin/python`; capture UART `/dev/ttyUSB2` at 115200 baud into a unique `build/batch_00_uart.log`. Allow around 60 seconds after loader exit for 16 inference results. Check 16 RESULT rows before proceeding to batch 1. Do not call toflash or make nnpa.
