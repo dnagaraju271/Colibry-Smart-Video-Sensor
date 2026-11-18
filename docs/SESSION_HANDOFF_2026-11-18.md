@@ -734,3 +734,7 @@ After the initial batch commit, the main.c final banner was updated to report dy
 - Generator supports batch-start and batch-size args; max batch size 16; checks precisely 71 eligible image records in manifest and skips zero-person pending rows.
 - Batch summarizer parses these rows, verifies no duplicates/missing indexes, and prints confusion matrix/per-class precision/recall/F1 and optional CSV.
 - Batch firmware remains unpulled, uncompiled and untested locally after this update. Next operation is pull + py_compile + generate batch 0 and build only; inspect memory. Do not load on board until build passes.
+
+### Batch banner detail
+
+Final board firmware banner prints `OWN_COUNT_SAMPLE_COUNT`, `OWN_COUNT_BATCH_START`, and `OWN_COUNT_TOTAL_IMAGES`; top-level source comment now describes up to 16 embedded images rather than three. The output completion banner uses the actual dynamic sample count.
