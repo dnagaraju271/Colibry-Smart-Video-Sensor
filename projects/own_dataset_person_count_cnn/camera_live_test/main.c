@@ -194,6 +194,8 @@ static uint32_t psb_channels(uint32_t info)
 static void print_pipeline_registers(const char *label)
 {
     printf("\n===== PIPELINE REGISTERS: %s =====\n", label);
+    printf("SCU_PERIPH_CLK_EN: 0x%08lx\n",
+           (unsigned long)colibrySCU->regmap->scu_periph_clk_en.word);
     printf("CAMIF_PROTOCOL_CFG: 0x%08lx\n",
            (unsigned long)CAMIF_reg->camif_protocol_cfg.word);
     printf("CAMIF_IMG_SIZE_CFG: 0x%08lx\n",
@@ -459,6 +461,11 @@ static int capture_one_frame(void)
 #if CAMIF_PATTERN_TEST
     printf("\nTriggering one CAMIF synthetic frame...\n");
     CAMIF_reg->camif_patgen_control.word = PATGEN_FRAME_START_MASK;
+    printf("PATGEN_IMMEDIATE_STATUS: busy=%lu, img_count=%lu, camif_int=0x%08lx, nnpa_int=0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_patgen_status.fields.patgen_busy,
+           (unsigned long)CAMIF_reg->camif_img_count.word,
+           (unsigned long)CAMIF_reg->camif_int_status.word,
+           (unsigned long)NNPA_reg->nnpa_int_status.word);
 #else
     printf("\nTriggering one PAG7920LT frame...\n");
     colibryBoard.cameraPAG7920LT.trigSingleFrame();
