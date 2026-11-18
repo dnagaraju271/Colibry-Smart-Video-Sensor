@@ -1184,3 +1184,20 @@ sha256sum build/own_count_camera_live.bin
 ```
 
 Build only, do NOT load yet. Inspect compiler/linker output and SRAM footprint. If build succeeds and fits in 128 KiB, then run with UART `/dev/ttyUSB2` and JTAG SRAM loader, capture log, decode 30-row PNG and inspect frame/metadata/error bits. No external flash writes.
+
+## One-frame PAG7920LT camera test source review — 2026-11-18
+
+Further source review verified the live firmware's intended 160x120 -> 40x30 scaler setup and NNPA input mapping against the checked-in Colibry Product Specification:
+- CAMIF RAW mode is one channel; product spec says RAW supports single-channel grayscale or Bayer data, so actual optical interpretation still must be visually checked from the captured frame. Do not assume the sensor stream is a correctly processed grayscale training image solely from CAMIF channel count.
+- ISP scaler supports one or three channels, scale factors use 4.8 fixed point, and exact output-size fields must be configured. For 160x120 to 40x30, X/Y factor is 4.0 => 0x400.
+- ISP cropper and Bayer2RGB/RGB2GRAY are bypassed in the first test; scaler alone is active. This reflects the PAG7920LT SDK's RAW camera mode. The emitted PNG lets us inspect whether the stream is monochrome or contains a Bayer pattern before trusting model accuracy.
+- `NNPA_REG->rd_ifmap_info` and `rd_ifmap_size` metadata validation now checks 40x30x1, `flattened=0`, `pack_level=3`; if different, firmware exits before live capture. This validates the memory-mapping assumptions used to reconstruct pixels from NNPA input memory.
+- After camera frame arrives, firmware checks ISP scaler input dimensions exactly 160x120x1 and asserts that low 5 ISP error bits are zero; otherwise it exits before inference.
+- The code prints raw 30-row frame dump over UART. `decode_frame_log.py` converts it to a 40x30 PNG. Compare the displayed frame with an actual scene and judge whether it is a genuine grayscale image and whether the image geometry is reasonable.
+- `LIVE_FRAME_INFERENCE: SUCCESS` and prediction output only indicate the hardware ran the current classifier on that one captured frame. The model remains a whole-image 1/2/3 class classifier, with no 0-person, >3 or bounding boxes.
+
+Current live test sources have been committed under `projects/own_dataset_person_count_cnn/camera_live_test/`. The latest `main.c` includes metadata and scaler error checks. User has not yet pulled, built, or run it.
+
+### Next action (build only)
+
+Safe fast-forward origin/main preserving local untracked data; then from `projects/own_dataset_person_count_cnn/camera_live_test` run `make prepare-model`, `make all board=EVBTINY`, `riscv32-corev-elf-size build/own_count_camera_live/own_count_camera_live`, `ls -lh build/own_count_camera_live.bin`, and `sha256sum build/own_count_camera_live.bin`. Do not run loader until build succeeds and total code/data/BSS is verified <= 131072 bytes. If build passes, load only `build/own_count_camera_live.bin` via `colibry-sramtool.py`; capture UART; decode PNG; inspect frame and metadata. No flash writing.
