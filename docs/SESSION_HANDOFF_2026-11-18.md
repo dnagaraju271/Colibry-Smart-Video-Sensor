@@ -351,3 +351,36 @@ No external flash write, erase, or programming operation was performed during re
 ### Next safe step
 
 Run the existing trainer with --check-only on the canonical archive and inspect the existing report/model artifact hashes. Preserve the current generated experiment directory. If retraining is required, use a new timestamped output directory to avoid overwriting previous weights/reports. After host-side metrics are acceptable, proceed to NNPA inference firmware preparation and physical-board inference; do not describe this as on-board training.
+
+## Own dataset preflight completed — 2026-11-18
+
+User ran the training script with --check-only. Results:
+
+- Canonical archive: /home/nagaraju/Colibry-Smart-Video-Sensor/datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip.
+- Archive size: 725 KiB.
+- Archive SHA-256: c43161f7ed98bab89b997d986396b77a554c22f6b5821b3a01807d010b2777c7.
+- Processed image directory contains 71 images with counts 1_person=59, 2_person=8, 3_person=4.
+- Archive contains 71 labeled images; three pending zero-person originals were skipped by the trainer.
+- Model input: 30x40x1 grayscale.
+- Train/validation split: 56 / 15; train class counts 47/6/3 and validation counts 12/2/1.
+- There are 6 source groups, but 5 source groups occur in both train and validation splits. The image-level split therefore leaks related images across partitions and cannot support a reliable generalization estimate.
+- Exactly two trainable layers confirmed: Conv2D and Dense. Total parameters 14,443.
+- `--check-only` passed; it did not start training or write model files.
+- TensorFlow CUDA warnings indicate GPU not available and CPU execution is expected; they did not make the preflight fail.
+
+Existing artifacts found and checksummed (all from 2026-11-16):
+
+- Keras source model: `simple_person_cnn/model/own_count_experiment/own_count_cnn.keras`, 193 KiB, SHA-256 `5c96d2ce428d66e6cbf6fc335a1f19850a90a27c8b6a6a09b7d99abba6443654`.
+- TFLite export: same experiment directory `own_count_cnn.tflite`, 60 KiB, SHA-256 `d3544ca026fa739ea9844022d104d983704b05e3ebbe1063fb0784d8baafbe54`.
+- Experiment report: `experiment_report.json`, SHA-256 `0473cccd9aca0a4ec85b0355d20c3bedbaf16f623e6706a59df8bc45d73a3a84`.
+- Legacy Keras H5: `~/models/edgeguard_own_count/own_count_cnn_legacy.h5`, 72 KiB, SHA-256 `17692bcccaf677a009e6808d76aa8fc9fd7dbd47180aa539afd9788e81bbfc42`.
+- PTQ TFLite: `~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite`, SHA-256 `df8d84655a0c1142aa556120920587ce256f26bd14a0c0c5a8c598bfbfe9a45a`.
+- Compiled CNN NNPA: `~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite.nnpa`, 19,392 bytes, SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`.
+
+Existing model should not be retrained/overwritten until current report metrics and per-source-group class distributions are inspected. Prior evaluation documented 80% image-level validation accuracy but confusion matrix [[12,0,0],[2,0,0],[0,1,0]], showing the model failed on validation examples from classes 2_person and 3_person.
+
+Important clarification: model training is performed on the Ubuntu host using TensorFlow and the user's data; Colibry NNPA is used to execute inference, not to train weights. The compiled CNN artifact has not been flashed and has not been run on the physical board.
+
+### Next local read-only diagnostic
+
+Inspect `experiment_report.json`, group counts per source timestamp, and whether `datasets/mobile_160x120/processed/` is just an extracted copy of the 71 archive images or contains additional examples. Do not retrain or change model/flash files yet. Consider collecting more 2-person and 3-person images before any new run.
