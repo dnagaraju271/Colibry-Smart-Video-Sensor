@@ -529,3 +529,20 @@ User verified:
 ### Next step
 
 Capture UART output to a log before launching the SRAM loader directly with `~/colibry-flash-env/bin/python` and the JTAG port `ftdi://ftdi:4232hp:5:2/1`. This is equivalent to the SDK `tosram` command: `<binary> 0x10000000 --run`. Do not invoke `make toflash` or `make nnpa`. Expect existing firmware LED blink to stop while CPU is halted; the loaded CNN app performs test and then loops. A power cycle/normal boot returns to flash-resident firmware.
+
+## First SRAM loader invocation — UART capture expired — 2026-11-18
+
+User ran the SDK SRAM loader through `~/colibry-flash-env/bin/python` with binary `build/own_count_cnn_sram_demo.bin`, address 0x10000000, `--run`, JTAG port channel 1.
+
+Observed loader output:
+- JTAG IDCODE 0x249511c3.
+- CPU halted.
+- `Writing to SRAM... Done`.
+- `Starting CPU`.
+- Loader exit code 0.
+
+UART capture was started with `timeout 25s cat /dev/ttyUSB2`. Shell reported `[1]+ Exit 124 timeout 25s cat ...`; UART log was empty. Because the capture window timed out while the loader invocation was running, this does not establish whether firmware produced output or NNPA inference passed/failed. The loader success only proves that the SRAM loader accepted and copied the binary and issued CPU start sequence; it does not prove app execution.
+
+### Next action
+
+Retry the same SRAM-only load with a directly managed background `cat /dev/ttyUSB2` process (no 25 s timeout), start capture before invoking loader, wait after it returns, then stop only the cat process and inspect log. Reloading the same binary is safe for external flash; it reuses volatile SRAM and does not touch sector 0x20000. Continue not to run `toflash` or `make nnpa`.
