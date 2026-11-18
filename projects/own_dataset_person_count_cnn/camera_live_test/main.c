@@ -96,6 +96,44 @@ static uint32_t psb_channels(uint32_t info)
     return ((info >> 22) & 0x3u) + 1u;
 }
 
+static void print_pipeline_registers(const char *label)
+{
+    printf("\n===== PIPELINE REGISTERS: %s =====\n", label);
+    printf("CAMIF_PROTOCOL_CFG: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_protocol_cfg.word);
+    printf("CAMIF_IMG_SIZE_CFG: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_img_size_cfg.word);
+    printf("CAMIF_IMG_CURR_PTR: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_img_curr_ptr.word);
+    printf("CAMIF_IMG_COUNT: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_img_count.word);
+    printf("CAMIF_DATA_FIFO_STATUS: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_data_fifo_status.word);
+    printf("CAMIF_DATA_FIFO_THR: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_data_fifo_thr.word);
+    printf("CAMIF_INT_STATUS: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_int_status.word);
+    printf("ISP_CTRL: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_ctrl.word);
+    printf("ISP_STATUS: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_status.word);
+    printf("ISP_CROPPER_PSB_INFO: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_cropper_psb_info.word);
+    printf("ISP_B2RGB_PSB_INFO: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_b2rgb_psb_info.word);
+    printf("ISP_RGB2GRAY_PSB_INFO: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_rgb2gray_psb_info.word);
+    printf("ISP_SCALER_PSB_INFO: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_scaler_psb_info.word);
+    printf("ISP_SCALER_SCALING_CFG: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_scaler_scaling_cfg.word);
+    printf("ISP_SCALER_SIZE_OUT: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_scaler_size_out.word);
+    printf("ISP_INT_STATUS: 0x%08lx\n",
+           (unsigned long)isp.regmap->isp_int_status.word);
+    printf("===== END PIPELINE REGISTERS =====\n");
+}
+
 /*
  * The model input feature map is unflattened 40x30x1.
  * This follows the NNPA product specification's unflattened IFMAP
@@ -161,7 +199,12 @@ static int capture_one_frame(void)
         EVT_INPUT_LOADER_OVF_MASK |
         EVT_ISP_SIZE_ERR_MASK;
 
+    /* Clear stale peripheral flags so post-capture status is frame-specific. */
+    CAMIF_reg->camif_int_clear.word = 0x3Fu;
+    isp.regmap->isp_int_clear.word = 0x3Fu;
+
     NNPA_reg->nnpa_control.fields.cpu_mem_access = 0u;
+    print_pipeline_registers("BEFORE_TRIGGER");
 
     printf("\nTriggering one PAG7920LT frame...\n");
     colibryBoard.cameraPAG7920LT.trigSingleFrame();
@@ -197,6 +240,7 @@ static int capture_one_frame(void)
         return 3;
     }
 
+    print_pipeline_registers("AFTER_FRAME");
     scaler_info = isp.isp_scaler_psb_info_get();
 
     printf("NNPA_DATA_LOADED: %lu bytes (%lu 16-byte words)\n",
