@@ -113,3 +113,25 @@ The user ran the offline inspection script against the local 65536-byte backup. 
 ### Next step — inspect read transport offline
 
 Inspect the source implementation of `JtagSpimfInterface.exchange()` and how it services read lengths/chunks, especially any 256-byte burst limits. Do not reconnect to the board or repeat a flash read until this software path is reviewed. No programming decision should rely on this backup until its transport integrity is established.
+
+
+## SDK SPIMF read transport source review — 2026-11-18
+
+The user supplied the relevant `JtagSpimfInterface` source from `colibry-flashtool.py`:
+
+- `SPIMF_FIFO_NBYTES = 16`.
+- `exchange(tx_bytes, readlen)` sets `nbyte = len(tx_bytes) + readlen`, builds TX words from the command bytes plus zero dummy bytes, allocates RX words, and keeps chip select low during the operation.
+- It sends data in 16-byte FIFO chunks, using `ceil(chunk_bytes/4)` 32-bit words, and reads the same number of words from `COLIBRY_SPIMF_RX_POP_ADDR` via `jtag_api.mmap_read()`.
+- It converts received words back to bytes and returns the bytes after the TX-command prefix.
+- For the sector reads used here, each transaction requested 4096 data bytes plus a 4-byte READ command, total 4100 bytes (divisible by four). The chunk accounting and final trim look internally consistent at a superficial review; no definite 4 KB size arithmetic bug identified.
+- `spimf_init()` still explicitly halts the CPU and configures PLL/calibration/DIO/SPIMF; always account for CPU restart after any future JTAG SPIMF initialization.
+
+### Remaining unknown
+
+Need inspect `colibry_jtag_api.py` implementations of:
+- `mmap_read(addr)`
+- `mmap_write(addr, data, push=True)`
+- any `push=False` behavior / queued write semantics
+- lower-level `read_dmi` and `write_dmi` used for system-bus access
+
+Do not reconnect to the board or reread flash while reviewing these software paths. No flash writes/erases have been performed.
