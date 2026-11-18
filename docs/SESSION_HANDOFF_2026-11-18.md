@@ -152,3 +152,18 @@ The user supplied a source excerpt for `JtagSpimfInterface.exchange()` from `col
 ### Next step
 
 Read-only source inspection of `~/colibryNPU_SDK/riscv_runtime/tools/colibry_interfaces/colibry_jtag_api.py`, focusing on full `mmap_read()` and `mmap_write()` implementations and any queue/push behavior. Do not reconnect to the board until this code review is complete.
+
+
+## Review of JTAG system-bus access excerpt — 2026-11-18
+
+The user supplied `mmap_read()` and `mmap_write()` implementations:
+
+- `mmap_read(addr)` resets the JTAG TAP, writes DMI `sbaddress0` (0x39), reads `sbdata0` (0x3C), and returns that value.
+- `mmap_write(addr, data, push=True)` resets the JTAG TAP, only rewrites `sbaddress0` if `self_curr_mmap_waddr != addr`, writes DMI `sbdata0` (0x3C), calls `jtag.sync()`, and optionally drains four bytes from the JTAG controller. It documents `push=False` as deferring effective write until next access.
+- Important check: `mmap_read(RX_POP)` does change the actual system-bus address but does not update `self_curr_mmap_waddr`. In `JtagSpimfInterface.exchange()`, however, each following FIFO iteration first calls `mmap_write(SPIMF_LEN_ADDR, ...)`, then `mmap_write(SPIMF_TX_PUSH_ADDR, ...)`; both differ from the cached TX_PUSH address after a previous chunk and so should explicitly rewrite `sbaddress0` before writing TX data. Thus this particular cache detail is not, by itself, proof of incorrect writes in the shown exchange loop.
+- The implementation of `read_dmi()` and `write_dmi()` is still not yet visible. These are necessary to assess the exact DMI pipeline/read completion semantics and whether RX words returned by `mmap_read()` are valid.
+- No new board access or flash modification occurred.
+
+### Next step — source-only inspection
+
+Read the exact bodies of `read_dmi()` and `write_dmi()` (around lines 160–222 in `colibry_jtag_api.py`). Do not reconnect to the board or perform any flash operation until DMI read/write behavior is understood.
