@@ -574,3 +574,17 @@ Conclusion: first physical NNPA inference execution succeeded for three inputs a
 Compare these same 3 inputs and exact preprocessing (Pillow grayscale + Lanczos resize 160x120 to 40x30, uint8 input bytes) using the host INT8 TFLite file `~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite`. Print host raw uint8 outputs and argmax. Compare to board raw logits above. Previous image-level report matrix showed 3_person predicted as 1_person, whereas board produced 2_person on that exact named sample, so quantized host-vs-board parity must be established. If exact parity holds, proceed to data/model review; if not, inspect the NNPA output read/index/quantization and input pipeline before retraining.
 
 Board app finishes in an infinite loop, with user LED turned off after initial brief pulse. A normal power cycle/boot returns to flash-resident application; no flash writes were performed.
+
+## Host-vs-board parity attempt — input shape bug in diagnostic script — 2026-11-18
+
+User ran the host TFLite comparison diagnostic. The correct PTQ TFLite artifact was loaded:
+- Size: 17,312 bytes.
+- SHA-256: `df8d84655a0c1142aa556120920587ce256f26bd14a0c0c5a8c598bfbfe9a45a`.
+- Input tensor: `[1,30,40,1]`, dtype uint8, quantization `(0.003921568859368563, 0)`.
+- Output tensor: `[1,3]`, dtype uint8, quantization `(0.024000564590096474, 241)`.
+- The script failed at `set_tensor()` with `Dimension mismatch. Got 2 but expected 4` because the diagnostic helper's uint8 branch returned the 2-D Pillow array without adding batch/channel axes.
+- This is a bug in the comparison script only; model load/tensor metadata succeeded. TensorFlow CUDA and XNNPACK informational messages are not the failure.
+
+### Correct next step
+
+Rerun host comparison using `tensor = image[np.newaxis, ..., np.newaxis]` for this model, since uint8 quantization scale is exactly 1/255 and zero point 0, so grayscale bytes can be passed unchanged. Compare output uint8 triplets / argmax to the board values `[224,133,46]`, `[223,166,26]`, `[146,185,78]` for the same exact filenames and Pillow Lanczos preprocessing. Do not change or retrain model yet; no new board operation required.
