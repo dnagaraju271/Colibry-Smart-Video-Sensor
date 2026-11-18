@@ -19,6 +19,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("logs", nargs="+", type=Path)
     parser.add_argument("--expected-images", type=int, default=71)
+    parser.add_argument("--start-index", type=int, default=0,
+                        help="Global dataset index of the first expected result.")
     parser.add_argument("--csv", type=Path, default=None)
     args = parser.parse_args()
 
@@ -54,7 +56,9 @@ def main() -> int:
         for error in errors:
             print(error)
 
-    expected_indices = set(range(args.expected_images))
+    if args.start_index < 0 or args.expected_images < 1:
+        parser.error("--start-index must be >= 0 and --expected-images must be >= 1")
+    expected_indices = set(range(args.start_index, args.start_index + args.expected_images))
     actual_indices = set(rows)
     missing = sorted(expected_indices - actual_indices)
     unexpected = sorted(actual_indices - expected_indices)
@@ -72,6 +76,7 @@ def main() -> int:
         correct += int(true_id == predicted)
 
     print("\n===== BOARD DATASET INFERENCE AUDIT =====")
+    print(f"Expected index range: {args.start_index}..{args.start_index + args.expected_images - 1}")
     print(f"Unique results: {len(rows)} / {args.expected_images}")
     print(f"Missing indices: {missing}")
     print(f"Unexpected indices: {unexpected}")
