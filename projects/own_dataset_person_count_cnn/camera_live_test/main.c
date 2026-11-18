@@ -124,9 +124,12 @@ static void diagnose_pag7920_registers(void)
         0x4Bu, 0x70u, 0xC2u, 0xC3u, 0xC8u,
         0xC9u, 0xCBu, 0xCCu, 0xCEu
     };
-    /* camera_init() applies horizontal flip: bank 1 register C2 becomes 0. */
+    /*
+     * camera_init() applies horizontal flip first, then the QQVGA addon.
+     * The later QQVGA addon overwrites bank 1 register C2 with 0x02.
+     */
     static const uint8_t bank1_expected[] = {
-        0x11u, 0x10u, 0x00u, 0x00u, 0x78u,
+        0x11u, 0x10u, 0x02u, 0x00u, 0x78u,
         0x00u, 0x04u, 0x00u, 0x00u
     };
 
@@ -134,10 +137,12 @@ static void diagnose_pag7920_registers(void)
         0x19u, 0x1Au, 0x23u, 0x24u, 0x27u,
         0x28u, 0x2Du, 0x2Eu, 0xD9u
     };
-    /* camera_init() applies horizontal flip: bank 2 register D9 becomes 2. */
+    /*
+     * The QQVGA addon runs after setImageFlip() and leaves bank 2 D9 at 0x01.
+     */
     static const uint8_t bank2_expected[] = {
         0x81u, 0x00u, 0x78u, 0x00u, 0x09u,
-        0x00u, 0x78u, 0x00u, 0x02u
+        0x00u, 0x78u, 0x00u, 0x01u
     };
 
     static const uint8_t bank4_addresses[] = {0x3Au, 0x3Bu};
