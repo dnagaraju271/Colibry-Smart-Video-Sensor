@@ -322,3 +322,32 @@ The user ran a local-file-only comparison between the recovered original 64 KiB 
 Conclusion: the original 64 KiB sector data is recovered and verified locally; the current sector image is exactly the expected historical composition, with the previous detector NNPA replacing only the first 14,224 bytes while the original 51,312-byte tail is preserved. This does not mean the new own-count CNN has been flashed or that it is ready for deployment.
 
 No external flash write, erase, or programming operation was performed during recovery/verification. Preserve both original and current sector backup files. Do not flash the new CNN as part of this recovery task.
+
+## Own dataset and CNN deployment plan — 2026-11-18
+
+### Dataset already available
+
+- Canonical archive: datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip.
+- Images are 160x120 grayscale and the existing trainer resizes to 40x30 grayscale input.
+- Previously verified training class distribution: 1_person=59, 2_person=8, 3_person=4 (71 labeled images). The manifest also contains pending zero-person originals intentionally skipped; there is no trained zero-person class in this experiment.
+- This dataset is highly imbalanced, especially for 2-person and 3-person cases. Do not treat aggregate accuracy alone as sufficient validation.
+
+### Existing model and prior training
+
+- Training script: simple_person_cnn/train_own_count_cnn.py.
+- Architecture: exactly two trainable layers: Conv2D(4 filters, 3x3, ReLU) and Dense(3 linear logits), with Flatten between them; 40x30x1 input and 3 classes.
+- The script supports --check-only, which checks dataset integrity, split, architecture, and class distributions without starting training or writing model files.
+- Previously run host training used 56 training and 15 validation images; early stopped at epoch 21 with best epoch 14. Train accuracy was 1.0 and validation accuracy 0.8, but the confusion matrix [[12,0,0],[2,0,0],[0,1,0]] shows the model failed to identify 2-person and 3-person validation examples. This model is not yet a reliable people counter.
+- Legacy Keras exporter: simple_person_cnn/export_legacy_keras_for_colibry.py; it copies the same weights into legacy tf_keras and checks numerical parity.
+- A full-INT8 TFLite and 19,392-byte NNPA compile artifact were already produced earlier. NNPA file: ~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite.nnpa; the previously recorded SHA-256 is ee9940c9edb9c66e6cbf6fc335a1f19850a90a27c8b6a6a09b7d99abba6443654? Verify the precise hash with sha256sum before deployment.
+- The Colibry board does not train neural-network weights. Training is performed on the Ubuntu host using the user's dataset; Colibry NNPA runs inference using a compiled NNPA bitstream loaded by suitable firmware.
+
+### Hardware/deployment status
+
+- Board's current flash sector 2 at 0x20000 is proven byte-for-byte to contain the old 14,224-byte person-detector NNPA followed by the original 51,312-byte flash tail.
+- The new own-count CNN is not flashed and has not been verified running on board.
+- Before any flash change, inspect SDK reference firmware/sample paths for loading a model into NNPA SRAM and running a small CNN inference test. Keep existing original/current sector backups intact. Avoid direct sector replacement until firmware loading path and all data/layout requirements are established.
+
+### Next safe step
+
+Run the existing trainer with --check-only on the canonical archive and inspect the existing report/model artifact hashes. Preserve the current generated experiment directory. If retraining is required, use a new timestamped output directory to avoid overwriting previous weights/reports. After host-side metrics are acceptable, proceed to NNPA inference firmware preparation and physical-board inference; do not describe this as on-board training.
