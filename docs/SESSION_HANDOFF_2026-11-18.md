@@ -196,3 +196,18 @@ The helper:
 ### Next action
 
 User must pull the updated `main` and run `python -m py_compile` locally first. Only after syntax validation should the cache-safe helper be run using explicit `--sdk-root` and `--output` paths (because `sudo` changes `Path.home()`). The helper will halt CPU while initializing SPIMF and restart it at cleanup; expect the LED to pause temporarily. After the corrected read, compare sector checksum, block patterns, and embedded NNPA signature. Do not flash/program anything yet.
+
+
+## Local repository update and syntax verification — 2026-11-18
+
+- User safely entered the repository at `/home/nagaraju/Colibry-Smart-Video-Sensor`.
+- `git fetch origin main` advanced the remote-tracking ref from `8f58562` to `1c32346`.
+- Confirmed remote `main` did not contain path collisions with the three untracked local paths:
+  - `datasets/mobile_160x120/processed/`
+  - `main`
+  - `simple_person_cnn/model/own_count_experiment/`
+- Confirmed local `HEAD` was an ancestor of `origin/main`.
+- `git merge --ff-only origin/main` succeeded and brought in the reference documents, handoff and cache-safe flash reader.
+- `python3 -m py_compile scripts/board/read_flash_sector_jtag_cache_safe.py` passed.
+- All three untracked paths remained untouched and present after the update; none were staged, committed, stashed, moved, or deleted.
+- Next step: use the cache-safe helper first for a small 256-byte read at 0x20000 to validate the multi-FIFO read path, saving under a new unique filename. Inspect that short output before considering a complete 64 KiB backup. The helper has not yet been hardware-tested.
