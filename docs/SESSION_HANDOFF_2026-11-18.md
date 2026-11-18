@@ -907,3 +907,32 @@ Batch 2 has been generated, built and preserved:
 ### Next action
 
 Pull only the summarizer fix from origin/main with a safe fast-forward check (confirm no conflicts with untracked local files). Re-run batch 1 summary with `--expected-images 16 --start-index 16 --csv build/batch_01_results.csv`; it should report no missing/unexpected indices. Then load `build/batches/batch_02.bin` to SRAM and capture 16 results for indices 32..47 into a unique UART log. No rebuild required for batch 2 binary; it was already built from firmware source that uses global dataset indices and generated expected class IDs. Do not run toflash or make nnpa.
+
+## Physical board inference — batch 2 / dataset indices 32-47 — 2026-11-18
+
+User loaded preserved `build/batches/batch_02.bin` with JTAG SRAM loader:
+- JTAG IDCODE 0x249511c3.
+- CPU halted, SRAM write Done, Starting CPU.
+- Loader exit code 0.
+- UART result count 16; firmware printed `ALL 16 NNPA INFERENCE CALLS COMPLETED`.
+- All 16 dataset indices 32-47 were `1_person`, and all predicted `1_person`.
+- Raw logits, respectively: 32 [255,143,21]; 33 [255,136,53]; 34 [255,124,0]; 35 [247,144,43]; 36 [255,124,47]; 37 [232,124,62]; 38 [253,133,45]; 39 [236,163,23]; 40 [249,144,45]; 41 [255,132,8]; 42 [255,146,17]; 43 [255,129,51]; 44 [249,142,49]; 45 [242,141,48]; 46 [255,143,31]; 47 [255,135,38].
+- Batch 2: 16/16 correct (100% within this all-1-person batch).
+
+Cumulative board audit for global dataset indices 0-47:
+- Total: 48 inferences, 45 correct = 93.75%.
+- Combined class supports: 1_person=36, 2_person=8, 3_person=4.
+- Combined confusion matrix (rows=true, columns=predicted; order [1_person,2_person,3_person]): `[[36,0,0],[2,6,0],[0,1,3]]`.
+- 1_person: 36/36 recall 100%; 2_person: 6/8 recall 75%; 3_person: 3/4 recall 75%.
+- All 3 misclassifications so far are toward lower counts: two 2_person -> 1_person, one 3_person -> 2_person.
+- This is evaluation on existing development/training images, not independent test accuracy/generalization. The batch-2 perfect score reflects that it contains only one-person examples.
+
+Batch 2 binary remains saved as `build/batches/batch_02.bin`, SHA-256 `e6cf895d6bcb4793e0e5f290dfbcc3a08055327e256e64991cbecee042d45366`. The batch-2 UART log path is `build/batch_02_uart.log`.
+
+Batch 1 summarizer bug fix has been pulled by user. Correct use for batch 1 is `--expected-images 16 --start-index 16`; user reports correct summary with no missing/unexpected indices. Batch 0 use start-index 0.
+
+No external flash modified.
+
+### Next action
+
+Run batch 2 summarizer with `--expected-images 16 --start-index 32 --csv build/batch_02_results.csv`. Then build batch 3 using `BATCH_START=48 BATCH_SIZE=16`, inspect size <= 128 KiB, save output binary to `build/batches/batch_03.bin` and record SHA-256. Batch 3 is build-only until explicitly loaded with the SRAM loader.
