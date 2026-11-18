@@ -1097,3 +1097,24 @@ SDK camera path inspected:
 5. Do not program sector 0x20000 or permanent flash until live SRAM path passes. Current new NNPA is 19,392 bytes versus old flash prefix 14,224 bytes; original tail and current sector backups remain preserved.
 
 Open question for user: which camera module is physically connected now — PAG7920LT/PAG7920J1, HM0360, EIS316, Arducam daughter board, or no camera yet?
+
+## Camera sensor detection probe added — 2026-11-18
+
+User approved proceeding to live-camera development. A first SRAM-only camera sensor detection probe has been committed:
+- `projects/own_dataset_person_count_cnn/camera_probe/main.c` — initializes Colibry board at 0.9 V / 40 MHz / APB divider 2, powers the sensor rail via `sensors_power_enable()`, then calls `camera_init(160,120,1,1)` for SDK auto-detection and 1 FPS sensor initialization. Prints enum name EIS316/HM0360/PAG7920LT and explicitly reports no frame capture, NNPA inference or external-flash access.
+- `projects/own_dataset_person_count_cnn/camera_probe/Makefile` — follows existing own-count board firmware Makefile structure using `~/colibryNPU_SDK` and `runtime.mk` for `EVBTINY`.
+- `projects/own_dataset_person_count_cnn/camera_probe/README.md` — build and SRAM-only loader workflow.
+
+Source basis: SDK `ColibryBoard::global_init()` powers sensors down by default; `sensors_power_enable()` enables the EvalboardTiny sensor rail and waits 50ms. `camera_init()` enables camera DIO, tests camera IDs in sequence (EIS316, HM0360, PAG7920LT), configures camera clock/startup, flips and sets QQVGA for 160x120. If no supported sensor is detected, SDK prints an error and exits.
+
+### Important conditions
+
+- A supported physical camera module must be attached and powered. EvalboardTiny user manual describes PAG7920-family sensor FPC and Arducam daughterboard connector; SDK camera detection supports EIS316, HM0360, PAG7920LT.
+- Probe config uses `onchip_mclk=1`, `expected_video_fps=1`, `CAMIF` output 160x120. It only initializes sensor; does not capture a frame. This is intentionally the first isolated test.
+- The project CNN requires 40x30 grayscale uint8. Once a sensor is detected, next step is test one frame and configure ISP grayscale/downscale to produce exactly 1200 bytes with host preprocessing compatibility.
+- User has not yet built/run this probe. Do not report sensor detected until UART confirms.
+- No NNPA or external flash is touched by the probe. Use SRAM loader only; do not use toflash/make nnpa.
+
+### Next user steps
+
+Fast-forward Ubuntu main after fetch, py_compile not applicable for C; build from `projects/own_dataset_person_count_cnn/camera_probe` with `make all board=EVBTINY`; inspect ELF size and binary path; load binary with `colibry-sramtool.py` in `~/colibry-flash-env/bin/python` at 0x10000000; capture `/dev/ttyUSB2` at 115200. If output says no camera detected, do not change model code; check physical camera module/connector and compatible sensor. If success, record exact sensor result.
