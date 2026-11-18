@@ -35,7 +35,6 @@
 #define CLASS_COUNT             3u
 
 static ColibryBoard colibryBoard;
-static IspDriver isp;
 
 static const char *class_name(uint32_t id)
 {
@@ -66,19 +65,19 @@ static void configure_isp_for_pag7920_mono(void)
      * The sensor delivers a single RAW grayscale channel, so Bayer2RGB
      * and RGB2GRAY stay bypassed. Only the scaler is enabled.
      */
-    isp.regmap->isp_ctrl.word =
+    colibryISP->regmap->isp_ctrl.word =
         ISP_CROPPER_BYPASS_MASK |
         ISP_BAYER2RGB_BYPASS_MASK |
         ISP_RGB2GRAY_BYPASS_MASK;
 
     /* 4.8 fixed-point ratio: 4.0 == 0x400. */
-    isp.isp_scaler_scaling_x_set(0x400u);
-    isp.isp_scaler_scaling_y_set(0x400u);
-    isp.isp_scaler_size_out_x_set(MODEL_INPUT_WIDTH);
-    isp.isp_scaler_size_out_y_set(MODEL_INPUT_HEIGHT);
+    colibryISP->isp_scaler_scaling_x_set(0x400u);
+    colibryISP->isp_scaler_scaling_y_set(0x400u);
+    colibryISP->isp_scaler_size_out_x_set(MODEL_INPUT_WIDTH);
+    colibryISP->isp_scaler_size_out_y_set(MODEL_INPUT_HEIGHT);
 
     /* Clear stale status flags before first frame. */
-    isp.regmap->isp_int_clear.word = 0x3Fu;
+    colibryISP->regmap->isp_int_clear.word = 0x3Fu;
 }
 
 static uint32_t psb_width(uint32_t info)
@@ -114,23 +113,23 @@ static void print_pipeline_registers(const char *label)
     printf("CAMIF_INT_STATUS: 0x%08lx\n",
            (unsigned long)CAMIF_reg->camif_int_status.word);
     printf("ISP_CTRL: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_ctrl.word);
+           (unsigned long)colibryISP->regmap->isp_ctrl.word);
     printf("ISP_STATUS: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_status.word);
+           (unsigned long)colibryISP->regmap->isp_status.word);
     printf("ISP_CROPPER_PSB_INFO: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_cropper_psb_info.word);
+           (unsigned long)colibryISP->regmap->isp_cropper_psb_info.word);
     printf("ISP_B2RGB_PSB_INFO: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_b2rgb_psb_info.word);
+           (unsigned long)colibryISP->regmap->isp_b2rgb_psb_info.word);
     printf("ISP_RGB2GRAY_PSB_INFO: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_rgb2gray_psb_info.word);
+           (unsigned long)colibryISP->regmap->isp_rgb2gray_psb_info.word);
     printf("ISP_SCALER_PSB_INFO: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_scaler_psb_info.word);
+           (unsigned long)colibryISP->regmap->isp_scaler_psb_info.word);
     printf("ISP_SCALER_SCALING_CFG: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_scaler_scaling_cfg.word);
+           (unsigned long)colibryISP->regmap->isp_scaler_scaling_cfg.word);
     printf("ISP_SCALER_SIZE_OUT: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_scaler_size_out.word);
+           (unsigned long)colibryISP->regmap->isp_scaler_size_out.word);
     printf("ISP_INT_STATUS: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_int_status.word);
+           (unsigned long)colibryISP->regmap->isp_int_status.word);
     printf("===== END PIPELINE REGISTERS =====\n");
 }
 
@@ -201,7 +200,7 @@ static int capture_one_frame(void)
 
     /* Clear stale peripheral flags so post-capture status is frame-specific. */
     CAMIF_reg->camif_int_clear.word = 0x3Fu;
-    isp.regmap->isp_int_clear.word = 0x3Fu;
+    colibryISP->regmap->isp_int_clear.word = 0x3Fu;
 
     NNPA_reg->nnpa_control.fields.cpu_mem_access = 0u;
     print_pipeline_registers("BEFORE_TRIGGER");
@@ -234,14 +233,14 @@ static int capture_one_frame(void)
         printf("NNPA_INT_STATUS=0x%08lx\n",
                (unsigned long)NNPA_reg->nnpa_int_status.word);
         printf("ISP_INT_STATUS=0x%08lx\n",
-               (unsigned long)isp.regmap->isp_int_status.word);
+               (unsigned long)colibryISP->regmap->isp_int_status.word);
         printf("CAMIF_INT_STATUS=0x%08lx\n",
                (unsigned long)CAMIF_reg->camif_int_status.word);
         return 3;
     }
 
     print_pipeline_registers("AFTER_FRAME");
-    scaler_info = isp.isp_scaler_psb_info_get();
+    scaler_info = colibryISP->isp_scaler_psb_info_get();
 
     printf("NNPA_DATA_LOADED: %lu bytes (%lu 16-byte words)\n",
            (unsigned long)(NNPA_reg->rd_input_size.word * 16u),
@@ -254,7 +253,7 @@ static int capture_one_frame(void)
            (unsigned int)MODEL_INPUT_WIDTH,
            (unsigned int)MODEL_INPUT_HEIGHT);
     printf("ISP_INT_STATUS: 0x%08lx\n",
-           (unsigned long)isp.regmap->isp_int_status.word);
+           (unsigned long)colibryISP->regmap->isp_int_status.word);
     printf("CAMIF_INT_STATUS: 0x%08lx\n",
            (unsigned long)CAMIF_reg->camif_int_status.word);
     printf("NNPA_INPUT_LOADER_LEVEL: %lu\n",
@@ -267,7 +266,7 @@ static int capture_one_frame(void)
         return 4;
     }
 
-    if ((isp.regmap->isp_int_status.word & 0x1Fu) != 0u) {
+    if ((colibryISP->regmap->isp_int_status.word & 0x1Fu) != 0u) {
         printf("ERROR: ISP reported a processing/PSB error.\n");
         return 5;
     }
