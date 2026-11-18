@@ -384,3 +384,27 @@ Important clarification: model training is performed on the Ubuntu host using Te
 ### Next local read-only diagnostic
 
 Inspect `experiment_report.json`, group counts per source timestamp, and whether `datasets/mobile_160x120/processed/` is just an extracted copy of the 71 archive images or contains additional examples. Do not retrain or change model/flash files yet. Consider collecting more 2-person and 3-person images before any new run.
+
+## Dataset source-group audit — 2026-11-18
+
+User inspected the previous training report, source groups, and extracted directory.
+
+- `datasets/mobile_160x120/processed/` contains 71 images and all 71 match byte-for-byte the same relative paths in the canonical ZIP. It is an extracted copy, not additional data.
+- The canonical ZIP manifest has 74 entries including 3 `pending_for_later_originals` zero-person originals, which are not included in the current 3-class trainer.
+- Per source group:
+  - 2026-11-16 11.33.31: 4 x 3_person and 1 x 2_person (5 total).
+  - 2026-11-16 11.33.32: 2 x 1_person and 2 x 2_person (4 total).
+  - 2026-11-16 11.33.33: 14 x 1_person and 5 x 2_person (19 total).
+  - 2026-11-16 11.33.34: 20 x 1_person.
+  - 2026-11-16 11.33.35: 16 x 1_person.
+  - 2026-11-16 11.33.36: 7 x 1_person.
+- All 4 `3_person` images are from one source group only (11.33.31). It is impossible to create an independent group-held-out validation split for `3_person` while also training on `3_person` with these data. Validation of that class cannot currently assess generalization across independent source groups.
+- `2_person` examples occur in 3 source groups but total only 8; `1_person` occurs in 5 groups but is majority class.
+- Prior model metrics: 21 epochs; train accuracy 1.0; image-level validation accuracy ~0.80; validation confusion matrix [[12,0,0],[2,0,0],[0,1,0]], so no 2_person or 3_person validation example was correctly classified. Do not claim this is a reliable people counter.
+- The image-level train/validation split leaks 5 of 6 source groups and related images; metrics are likely optimistic.
+- The TensorFlow `--check-only` preflight passed and did not write artifacts.
+- Existing trained model, TFLite, legacy H5, PTQ TFLite, and NNPA artifact have verified local hashes in the preceding section. The NNPA has not been flashed and has not run on the physical board.
+
+### Decision / next step
+
+For the professor's small-CNN proof-of-work, use the existing model only as an experimental candidate while clearly reporting the weak per-class validation. Do not retrain or overwrite the existing artifacts blindly. First inspect the SDK sample firmware that loads an NNPA bitstream into NNPA SRAM and performs one inference; determine the minimum firmware path for this exact `[1,30,40,1]` uint8 input and three logits. Board training is not supported by the NNPA; host training is required. Do not modify sector 0x20000 during this investigation.
