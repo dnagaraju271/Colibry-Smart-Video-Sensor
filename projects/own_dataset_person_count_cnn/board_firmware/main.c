@@ -206,7 +206,11 @@ int main(void)
     printf("NNPA bytes embedded in SRAM firmware: %u\n",
            (unsigned int)OWN_COUNT_NNPA_SIZE);
     printf("Input tensor: [1, 30, 40, 1] uint8\n");
-    printf("Input bytes: %u\n", (unsigned int)OWN_COUNT_INPUT_BYTES);
+    printf("Input bytes per image: %u\\n", (unsigned int)OWN_COUNT_INPUT_BYTES);
+    printf("Dataset batch: %u images starting at %u (total %u)\\n",
+           (unsigned int)OWN_COUNT_SAMPLE_COUNT,
+           (unsigned int)OWN_COUNT_BATCH_START,
+           (unsigned int)OWN_COUNT_TOTAL_IMAGES);
     printf("Trainable layers: Conv2D + Dense\n");
 
     printf("\nCopying NNPA model into NNPA SRAM...\n");
