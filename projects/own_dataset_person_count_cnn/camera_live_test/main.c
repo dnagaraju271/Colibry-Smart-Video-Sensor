@@ -133,6 +133,48 @@ static void print_pipeline_registers(const char *label)
     printf("===== END PIPELINE REGISTERS =====\n");
 }
 
+static void print_pipeline_interrupt_flags(void)
+{
+    const uint32_t isp_status =
+        colibryISP->regmap->isp_int_status.word;
+    const uint32_t camif_status =
+        CAMIF_reg->camif_int_status.word;
+
+    printf("\n===== DECODED PIPELINE INTERRUPT FLAGS =====\n");
+    printf("ISP_CROPPER_PSB_ERR: %lu\n",
+           (unsigned long)((isp_status >> 0u) & 1u));
+    printf("ISP_B2RGB_PSB_ERR: %lu\n",
+           (unsigned long)((isp_status >> 1u) & 1u));
+    printf("ISP_RGB2GRAY_PSB_ERR: %lu\n",
+           (unsigned long)((isp_status >> 2u) & 1u));
+    printf("ISP_SCALER_PSB_ERR: %lu\n",
+           (unsigned long)((isp_status >> 3u) & 1u));
+    printf("ISP_SCALER_PARAM_ERR: %lu\n",
+           (unsigned long)((isp_status >> 4u) & 1u));
+    printf("ISP_FRAME_START: %lu\n",
+           (unsigned long)((isp_status >> 5u) & 1u));
+
+    printf("CAMIF_IMG_OVERFLOW: %lu\n",
+           (unsigned long)((camif_status >> 0u) & 1u));
+    printf("CAMIF_IMG_UNDERFLOW: %lu\n",
+           (unsigned long)((camif_status >> 1u) & 1u));
+    printf("CAMIF_IMG_START: %lu\n",
+           (unsigned long)((camif_status >> 2u) & 1u));
+    printf("CAMIF_IMG_END: %lu\n",
+           (unsigned long)((camif_status >> 3u) & 1u));
+    printf("CAMIF_DATA_FIFO_READY: %lu\n",
+           (unsigned long)((camif_status >> 4u) & 1u));
+    printf("CAMIF_DATA_FIFO_OVERFLOW: %lu\n",
+           (unsigned long)((camif_status >> 5u) & 1u));
+    printf("CAMIF_CDC_FIFO_BYPASS: %lu\n",
+           (unsigned long)CAMIF_reg->camif_cdc_fifo_bypass.fields.cdc_fifo_bypass);
+    printf("CAMIF_DATA_FIFO_WORDS: %lu\n",
+           (unsigned long)CAMIF_reg->camif_data_fifo_status.fields.data_fifo_word_nb);
+    printf("CAMIF_DATA_FIFO_THRESHOLD: %lu\n",
+           (unsigned long)CAMIF_reg->camif_data_fifo_thr.fields.data_fifo_thr);
+    printf("===== END DECODED PIPELINE FLAGS =====\n");
+}
+
 /*
  * The model input feature map is unflattened 40x30x1.
  * This follows the NNPA product specification's unflattened IFMAP
@@ -219,6 +261,9 @@ static int capture_one_frame(void)
             NNPA_reg->nnpa_control.fields.cpu_mem_access = 1u;
             printf("ERROR: NNPA input stream error, INT_STATUS=0x%08lx\n",
                    (unsigned long)status);
+            print_pipeline_registers("NNPA_STREAM_ERROR");
+            print_pipeline_interrupt_flags();
+            printf("FRAME_DUMP_SKIPPED: NNPA did not report DATA_LOADED\n");
             return 2;
         }
 
@@ -236,6 +281,9 @@ static int capture_one_frame(void)
                (unsigned long)colibryISP->regmap->isp_int_status.word);
         printf("CAMIF_INT_STATUS=0x%08lx\n",
                (unsigned long)CAMIF_reg->camif_int_status.word);
+        print_pipeline_registers("FRAME_TIMEOUT");
+        print_pipeline_interrupt_flags();
+        printf("FRAME_DUMP_SKIPPED: NNPA did not report DATA_LOADED\n");
         return 3;
     }
 
@@ -259,6 +307,16 @@ static int capture_one_frame(void)
     printf("NNPA_INPUT_LOADER_LEVEL: %lu\n",
            (unsigned long)NNPA_reg->input_loader_level.word);
 
+    /*
+     * DATA_LOADED is set and CPU access is enabled here, so the full
+     * 40x30 NNPA input buffer can be dumped for diagnosis. This dump
+     * does not assert that the scaler output is valid and is not used
+     * to authorize inference.
+     */
+    print_pipeline_interrupt_flags();
+    printf("FRAME_DUMP_NOTE: diagnostic input bytes; validity not yet established\n");
+    dump_frame_rows();
+
     if (psb_width(scaler_info) != CAMERA_INPUT_WIDTH ||
         psb_height(scaler_info) != CAMERA_INPUT_HEIGHT ||
         psb_channels(scaler_info) != 1u) {
@@ -272,7 +330,6 @@ static int capture_one_frame(void)
     }
 
     printf("CAMERA_FRAME_CAPTURE: SUCCESS\n");
-    dump_frame_rows();
     NNPA_reg->nnpa_int_clear.word = EVT_DATA_LOADED_MASK;
     return 0;
 }
