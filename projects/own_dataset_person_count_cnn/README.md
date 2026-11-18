@@ -134,3 +134,14 @@ Do not permanently flash the model yet; sector 0x20000 contains the prior detect
 A minimal SRAM-only sensor detection probe is available at `camera_probe/`. It powers the sensor rail and invokes the ASYGN SDK auto-detection for EIS316, HM0360 and PAG7920LT. Build and SRAM-run it before implementing frame capture. No NNPA inference or flash operation occurs in this probe.
 
 After a module is detected, configure camera frame capture and ISP grayscale/downscale to match the CNN's required 40x30 uint8 tensor (1200 bytes). The camera probe has not yet been built or run by the user; its detection result must be confirmed over UART.
+
+## One-frame live camera NNPA test
+
+The PAG7920LT was detected and initialized on the physical EvalboardTiny. A new SRAM-only one-frame camera-to-ISP-to-NNPA test has been added under [`camera_live_test/`](camera_live_test/README.md).
+
+The test configures the confirmed PAG7920LT as 160x120 RAW8, enables only the ISP scaler at 4x in both axes (0x400 fixed-point), and expects a 40x30x1 uint8 NNPA input of 1200 bytes. The mono RAW path bypasses cropper, Bayer2RGB and RGB2GRAY; scaler remains enabled. The code validates NNPA IFMAP dimensions, packing metadata, ISP scaler input dimensions and ISP error flags before inference.
+
+It embeds the verified 19,392-byte NNPA bitstream into an SRAM firmware image, triggers a single camera frame, waits with a timeout for `EVT_DATA_LOADED`, prints the exact 40x30 input tensor over UART, and runs one inference. A host script can reconstruct the frame dump as a PNG.
+
+**This new live frame test has only been added to GitHub; it has not yet been built or run on the user's VM/board.** The first next step is pull, `make prepare-model`, `make all board=EVBTINY`, and inspect build size. It must run through the SRAM loader only; no `toflash` or flash programming. The scaler sampling output may not exactly match the host's Pillow Lanczos preprocessing, so inspect the reconstructed PNG and compare predictions empirically.
+
