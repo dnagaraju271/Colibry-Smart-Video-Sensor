@@ -257,3 +257,28 @@ The user inspected `cache_safe_probe_256_0x20000.bin` locally.
 ### Next action
 
 Run the cache-safe helper over the full 64 KiB sector at 0x20000, using 256-byte top-level read transactions and a new output path. Preserve both earlier files unchanged. Inspect the full corrected backup SHA-256 and byte/block distribution, then compare against the known CNN `.nnpa` artifact. Do not program or erase flash.
+
+
+## Full cache-safe sector backup and historical-hash match — 2026-11-18
+
+The user successfully ran the corrected cache-safe JTAG/SPIMF helper over the full 64 KiB region.
+
+- JTAG IDCODE: 0x249511c3.
+- Flash ID: recognized.
+- Range: address 0x20000, size 65536 bytes.
+- Top-level chunks: 256 bytes each, with FIFO read-cache invalidation after every SPIMF RX_POP read.
+- Backup path: /home/nagaraju/models/edgeguard_own_count/flash_backups/flash_sector_0x20000_cache_safe_20261118.bin.
+- Helper verified file size and in-memory-vs-saved SHA-256.
+- SHA-256: efbdd2be348d78e98ee2f18168c36b8f2e3b94a354e6c28123242a3f4a5da00c.
+- This exactly matches the previously recorded historical hash for the previous detector replacement sector. That historical image was documented as a 14,224-byte earlier detector NNPA bitstream plus preserved original tail to fill the 64 KiB sector.
+- Therefore, current sector 2 at 0x20000 is strongly identified as that historical previous detector replacement image, not as the new own-count CNN NNPA file. The CNN artifact remains 19,392 bytes with SHA-256 ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e.
+- CPU restart command was sent by the helper with boot address 0x10000000.
+- No flash erase, write, or program was performed.
+
+### State and next action
+
+- Keep all three local backups: original cache-bugged read, cache-safe 256-byte probe, and corrected cache-safe 64 KiB image.
+- The corrected 64 KiB file is the trustworthy sector backup candidate and matches the historical previous detector replacement hash.
+- Before deciding whether/how to replace the sector with the new CNN artifact, recover and verify the original pre-replacement sector tail and precise historical flash layout. Historical notes indicate the prior operation preserved a 51,312-byte tail, but the original sector backup hash is different and the original backup binary is not known to be present locally.
+- Do not overwrite the current sector until that original tail and replacement procedure are fully understood.
+- The current CNN NNPA file must not be flashed until a separate, safe, documented model/firmware loading path is established and the professor's requested simple CNN board inference workflow is prepared.
