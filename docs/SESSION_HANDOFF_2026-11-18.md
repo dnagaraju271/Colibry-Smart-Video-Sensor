@@ -1118,3 +1118,24 @@ Source basis: SDK `ColibryBoard::global_init()` powers sensors down by default; 
 ### Next user steps
 
 Fast-forward Ubuntu main after fetch, py_compile not applicable for C; build from `projects/own_dataset_person_count_cnn/camera_probe` with `make all board=EVBTINY`; inspect ELF size and binary path; load binary with `colibry-sramtool.py` in `~/colibry-flash-env/bin/python` at 0x10000000; capture `/dev/ttyUSB2` at 115200. If output says no camera detected, do not change model code; check physical camera module/connector and compatible sensor. If success, record exact sensor result.
+
+## Camera sensor detection probe built successfully — 2026-11-18
+
+User fast-forwarded Ubuntu main from 68e940d to 1c1d60b, preserving untracked local files (`datasets/mobile_160x120/processed/`, `experiments/professor_demo/task2_small_cnn/`, `main`, and `simple_person_cnn/model/own_count_experiment/`).
+
+User verified local SDK paths:
+- `~/colibryNPU_SDK/components_drivers/BOARDS/colibry_board.mk` exists.
+- `~/colibryNPU_SDK/riscv_runtime/runtime.mk` exists.
+
+Camera probe built from `projects/own_dataset_person_count_cnn/camera_probe` with `make all board=EVBTINY`:
+- All app and SDK C/C++ compilation succeeded, including `colibry_board.cpp`, EIS316, HM0360, PAG7920LT, CAMIF and ISP drivers.
+- Link succeeded.
+- SRAM binary generated: `build/colibry_camera_sensor_probe.bin`.
+- Other outputs: `build/colibry_camera_sensor_probe/colibry_camera_sensor_probe`, `_flash_boot`, `build/colibry_camera_sensor_probe_flash_boot.bin`, and `build/colibry_camera_sensor_probe_flash_copy.bin` (these are build products only; no flash loader used).
+- `riscv32-corev-elf-size`: text 40,968 bytes; data 20 bytes; BSS 13,096 bytes; total 54,084 bytes (0xD344), within the 128 KiB SRAM region.
+- The generated SRAM binary has not yet been loaded on the physical board; camera model not yet detected.
+- No external flash operation occurred.
+
+### Next action
+
+Start UART `/dev/ttyUSB2` at 115200; run continuous `cat` capture into `build/camera_probe_uart.log`; load only `build/colibry_camera_sensor_probe.bin` at address `0x10000000` via `colibry-sramtool.py` using `~/colibry-flash-env/bin/python`, JTAG `/1`. After loader returns, wait ~5 seconds, stop capture and inspect full UART log. Expected camera result is EIS316, HM0360 or PAG7920LT. If SDK prints no camera detected, stop and inspect physical module/connector/power; do not change CNN or flash. Do not load `_flash_boot.bin` or `_flash_copy.bin`.
