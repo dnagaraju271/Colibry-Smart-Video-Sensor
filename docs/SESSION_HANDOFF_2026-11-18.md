@@ -211,3 +211,16 @@ User must pull the updated `main` and run `python -m py_compile` locally first. 
 - `python3 -m py_compile scripts/board/read_flash_sector_jtag_cache_safe.py` passed.
 - All three untracked paths remained untouched and present after the update; none were staged, committed, stashed, moved, or deleted.
 - Next step: use the cache-safe helper first for a small 256-byte read at 0x20000 to validate the multi-FIFO read path, saving under a new unique filename. Inspect that short output before considering a complete 64 KiB backup. The helper has not yet been hardware-tested.
+
+
+## Cache-safe reader pull and syntax check — 2026-11-18
+
+- User safely ran the collision and fast-forward checks.
+- Local `HEAD` was an ancestor of `origin/main`, no remote collisions existed for the three untracked local paths.
+- `git merge --ff-only origin/main` succeeded.
+- `python3 -m py_compile scripts/board/read_flash_sector_jtag_cache_safe.py` succeeded with `SYNTAX CHECK PASSED`.
+- The untracked local paths remain untouched:
+  - `datasets/mobile_160x120/processed/`
+  - `main`
+  - `simple_person_cnn/model/own_count_experiment/`
+- Next action: run the cache-safe reader for a **256-byte probe only** at flash address 0x20000, save to a new output filename, and inspect the probe result. Do not yet run the full 64 KiB read. The helper automatically restarts CPU in finally; LED may pause during JTAG/SPIMF initialization.
