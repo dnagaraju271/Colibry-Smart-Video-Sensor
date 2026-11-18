@@ -725,3 +725,12 @@ User should fetch and fast-forward local main preserving untracked data and mode
 - Current flash sector 0x20000 holds old 14,224-byte detector NNPA prefix + original preserved tail. New own CNN NNPA is 19,392 bytes and would overwrite 5,168 more bytes of original tail if placed at same start address. Backups must stay preserved; do not replace sector until the flash layout, old tail bytes that may be live, boot firmware, and loader path are understood.
 - Even placing an NNPA bitstream in flash does not create live detection. Persistent firmware must initialize the camera, acquire frames, convert grayscale/resample to 40x30, load model from a known address into NNPA SRAM, run inference and handle output. Current firmware is only static-image SRAM test.
 - Do not flash any new model or firmware yet.
+
+## Batch firmware final source check — 2026-11-18
+
+After the initial batch commit, the main.c final banner was updated to report dynamic `OWN_COUNT_SAMPLE_COUNT` rather than the old fixed 'ALL THREE' text. It also prints batch size, total dataset count and batch start index.
+- Main firmware now compares predicted class against generated `own_count_expected_class_ids[]` (not loop-local sample index).
+- Each inference emits `RESULT,index,expected,predicted_class_id,logit0,logit1,logit2` for host-side aggregation.
+- Generator supports batch-start and batch-size args; max batch size 16; checks precisely 71 eligible image records in manifest and skips zero-person pending rows.
+- Batch summarizer parses these rows, verifies no duplicates/missing indexes, and prints confusion matrix/per-class precision/recall/F1 and optional CSV.
+- Batch firmware remains unpulled, uncompiled and untested locally after this update. Next operation is pull + py_compile + generate batch 0 and build only; inspect memory. Do not load on board until build passes.
