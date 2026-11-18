@@ -196,6 +196,42 @@ static uint8_t read_model_input_pixel(uint32_t x, uint32_t y)
     return word[mem_col];
 }
 
+static void dump_raw_input_memory(void)
+{
+    const uint32_t start_word = NNPA_reg->input_start_maddr.word;
+    const volatile uint8_t *raw = (const volatile uint8_t *)(
+        NNPAMEM_BASE_ADDR + (start_word * NNPA_NBYTE_PER_MEM_WORD)
+    );
+    uint32_t min_value = 255u;
+    uint32_t max_value = 0u;
+    uint32_t sum = 0u;
+
+    printf("\n===== RAW NNPA INPUT MEMORY (SEQUENTIAL BYTES) =====\n");
+    printf("RAW_INPUT_START_WORD: %lu\n", (unsigned long)start_word);
+    printf("RAW_INPUT_BYTES: %u\n", (unsigned int)MODEL_INPUT_BYTES);
+
+    for (uint32_t i = 0u; i < MODEL_INPUT_BYTES; ++i) {
+        const uint32_t value = raw[i];
+        if (value < min_value) min_value = value;
+        if (value > max_value) max_value = value;
+        sum += value;
+
+        if ((i % MODEL_INPUT_WIDTH) == 0u) {
+            printf("RAW_INPUT_ROW,%02lu,", (unsigned long)(i / MODEL_INPUT_WIDTH));
+        }
+        printf("%02X", (unsigned int)value);
+        if ((i % MODEL_INPUT_WIDTH) == (MODEL_INPUT_WIDTH - 1u)) {
+            printf("\n");
+        }
+    }
+
+    printf("RAW_INPUT_STATS,min=%lu,max=%lu,mean_x100=%lu\n",
+           (unsigned long)min_value,
+           (unsigned long)max_value,
+           (unsigned long)((sum * 100u) / MODEL_INPUT_BYTES));
+    printf("===== END RAW NNPA INPUT MEMORY =====\n");
+}
+
 static void dump_frame_rows(void)
 {
     uint32_t min_value = 255u;
@@ -316,6 +352,7 @@ static int capture_one_frame(void)
     print_pipeline_interrupt_flags();
     printf("FRAME_DUMP_NOTE: diagnostic input bytes; validity not yet established\n");
     dump_frame_rows();
+    dump_raw_input_memory();
 
     if (psb_width(scaler_info) != CAMERA_INPUT_WIDTH ||
         psb_height(scaler_info) != CAMERA_INPUT_HEIGHT ||
