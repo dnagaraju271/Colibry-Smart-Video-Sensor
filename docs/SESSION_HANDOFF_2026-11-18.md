@@ -644,3 +644,20 @@ GitHub operations only changed tracked repository files. The user's local untrac
 ### Next local action
 
 Safely fetch origin/main and fast-forward the Ubuntu working tree after confirming it is an ancestor and that untracked paths do not conflict. Then verify the new trainer syntax/check-only and new board firmware build under `projects/own_dataset_person_count_cnn/board_firmware/`. Because previous board firmware was tested, do not immediately rerun loader; the board's SRAM-resident app may still be running. A normal power cycle returns to flash firmware; no external flash write is needed.
+
+## Ubuntu fast-forward and rebuild from reorganized CNN project — 2026-11-18
+
+User updated the Ubuntu working tree from origin/main successfully:
+- Local HEAD advanced from 494e950 to da26176 using `git merge --ff-only origin/main`.
+- Pre-existing untracked paths remained in status before update: `datasets/mobile_160x120/processed/`, `main`, and `simple_person_cnn/model/own_count_experiment/`.
+- Python syntax checks passed for new project training script, legacy exporter, and board data generator.
+- New board project path: `projects/own_dataset_person_count_cnn/board_firmware/`.
+- `make prepare-data` succeeded and verified the 19,392-byte NNPA SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`; generated the board-data header from the canonical dataset archive containing three 1200-byte sample inputs.
+- `make check-inputs` succeeded.
+- `make all board=EVBTINY` completed C/C++ compilation, linker, objcopy and SDK image generation. Reported size: text 49,744; data 20; bss 12,512; total 62,276 bytes (0xF344).
+- New SDK outputs include SRAM binary `build/own_count_cnn_sram_demo.bin` and flash-oriented variants. These are generated artifacts only. User did not run `tosram`, `toflash`, `make nnpa`, or any flash loader in this rebuild.
+- No external flash programming occurred.
+
+### Current next step
+
+The same source firmware had already passed physical board inference before reorganization; the new-location build compiles the same tracked main.c and generator. If a final artifact equivalence check is desired, compare the new `.bin` SHA-256 to the old binary SHA-256 `5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`. Because the build path changed, debug-path-dependent ELF details may differ, but the binary should be compared before claiming identical bytecode. Do not rerun the board unless needed. Preserve local untracked image/model files and flash backups.
