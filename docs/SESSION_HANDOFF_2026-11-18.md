@@ -483,3 +483,20 @@ User inspected generated ELF `build/own_count_cnn_sram_demo/own_count_cnn_sram_d
 ### Next safety check
 
 Inspect `colibry-sramtool.py` source (the SRAM loader) and actual built `.bin` size/output path. Confirm it only writes the specified SRAM address and starts CPU, with no flash commands. Only after reviewing loader source should the SRAM test be run. The expected `.bin` is `build/own_count_cnn_sram_demo.bin` and is distinct from the ELF at `build/own_count_cnn_sram_demo/own_count_cnn_sram_demo`.
+
+## SRAM loader source reviewed — 2026-11-18
+
+User supplied the full `colibry-sramtool.py` source excerpt and artifact output.
+
+- Loader path: `~/colibryNPU_SDK/riscv_runtime/tools/bin_loader/colibry-sramtool.py` (156 lines).
+- Loader selects JTAG interface `Colibry_jtag_api(freq=2E6, channel=1)` by default.
+- For a supplied address in `0x10000000..0x1001FFFF` (Colibry 128 KiB SRAM), it calls `cpu_halt()` and `bin_copy()` to that address.
+- `bin_copy()` writes system-memory words through the JTAG access layer. The loader does not call flash-read/write/erase functions or the external flash access interface.
+- With `--run`, the loader writes PLL control register 0x200100C0=0x10E1, SCU HF clock config register 0x20010000=2, calls `cpu_restart()` (default boot address 0x10000000), then writes SCU core control register 0x20010030=1. These are clock/core-control register writes; no flash operations are present in the shown loader source.
+- SRAM application binary: `build/own_count_cnn_sram_demo.bin`, size shown as 49 KiB, SHA-256 `5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`.
+- Exact runtime target in `runtime.mk`: `python3 $(SRAM_LOADER) $(TARGET_BUILD_DIR)/$(TARGET_NAME).bin 0x10000000 --run`.
+- User has not yet run the SRAM loader. No physical-board inference has occurred and external flash remains untouched.
+
+### Before invoking SRAM loader
+
+Perform a local environment/serial preflight: confirm Python used for loader has `numpy` and `pyftdi`, check current USB device permissions and availability of a UART terminal (`picocom`, `minicom`, or `screen`), and confirm `/dev/ttyUSB2` is the ColibryProbe UART. Then open UART at 115200 baud before invoking loader. JTAG loader will halt current CPU; user LED blink will stop while SRAM test app runs. Firmware does a brief LED pulse after NNPA load then will keep LED off while it prints three test inferences and then loops forever. A power cycle/standard boot will return to flash-resident firmware, without changing external flash.
