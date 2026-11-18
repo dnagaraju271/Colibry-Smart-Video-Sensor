@@ -3,8 +3,9 @@
 
 The SDK's JtagSpimfInterface.exchange() interleaves mmap_write(TX_PUSH) and
 mmap_read(RX_POP). mmap_read() changes the system-bus address but does not
-update Colibry_jtag_api.self_curr_mmap_waddr. Without invalidation, later
-mmap_write(TX_PUSH) calls can skip restoring sbaddress0 and write to RX_POP.
+update Colibry_jtag_api.self_curr_mmap_waddr. On full 16-byte FIFO iterations,
+exchange() does not rewrite SPIMF_LEN_ADDR between chunks; the next TX_PUSH
+write can therefore skip restoring sbaddress0 and target RX_POP instead.
 
 This helper wraps mmap_read() to invalidate that cached address after every
 read. It only calls JEDEC READ ID (0x9F) and flash-array READ (0x03).
@@ -149,7 +150,6 @@ def main() -> int:
         print(f"Output:      {args.output}")
         print(f"SHA-256:     {digest}")
         print("Read method: cache-invalidated RX FIFO reads; 256-byte transactions")
-        return 0
 
     finally:
         print("\n===== CPU RESTART CLEANUP =====")
@@ -173,6 +173,10 @@ def main() -> int:
 
         if not restart_ok:
             print("Check the board before attempting any further operation.")
+
+    if not restart_ok:
+        raise RuntimeError("Backup finished or failed, but CPU restart was not confirmed")
+    return 0
 
 
 if __name__ == "__main__":
