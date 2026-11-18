@@ -116,3 +116,15 @@ The board execution test confirms the compiled model executes on the Colibry NNP
 Next: collect more independent 2-person and 3-person scenes, label pending zero-person originals, retrain on host, compile a new NNPA, and validate again. Live detection needs a camera-to-grayscale-40x30-to-NNPA firmware path. Do not permanently flash the new model or overwrite sector 0x20000 until that runtime and flash layout are reviewed.
 
 Full raw UART logs and CSV `build/all_71_board_results.csv` remain on the user's Ubuntu VM under `projects/own_dataset_person_count_cnn/board_firmware/build/`.
+
+## Live camera inference — feasibility and scope
+
+Training the CNN on the Colibry board is not supported by this NNPA workflow. Train model weights on the Ubuntu host with TensorFlow, export/quantize to uint8 TFLite and compile to NNPA. The Colibry NNPA runs inference.
+
+The SDK contains a camera route: `ColibryBoard::camera_init()` detects supported EIS316, HM0360 or PAG7920LT cameras, and `get_image_to_nnpa()` triggers a single camera frame and waits for the NNPA data-loaded event. `global_init()` disables sensor power by default, so camera firmware must explicitly enable the sensor rail before initialization.
+
+The model requires 40x30 grayscale uint8 input (1200 bytes). The EvalboardTiny camera sensor path must be configured through CAMIF/ISP grayscale and scaler blocks to generate this exact input. Camera frames are normally larger (e.g. QQVGA 160x120), so 4x downscaling in both axes and exact pixel/preprocessing parity must be validated.
+
+Current static-image batch firmware does not do live capture. Next work, pending confirmation of a connected supported camera module: first build an SRAM-only sensor-detection test; then a one-frame capture and ISP-to-40x30 verification; then integrate NNPA and continuously classify incoming frames. The output is a whole-image class (1/2/3 people), not bounding boxes, and there is no zero-person class.
+
+Do not permanently flash the model yet; sector 0x20000 contains the prior detector bitstream and preserved original tail. Keep both flash backups intact until live SRAM inference is proven and a safe flash layout is established.
