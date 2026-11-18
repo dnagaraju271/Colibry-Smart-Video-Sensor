@@ -1,88 +1,75 @@
 # Colibry EvalboardTiny SRAM inference firmware
 
-This directory contains the board-specific firmware for testing the team's own 3-class CNN on the Colibry NNPA. The model is trained on the Ubuntu host; the NNPA executes inference only.
+This directory contains board firmware for evaluating the team's own 3-class CNN on the Colibry NNPA. The model is trained on the Ubuntu host; the NNPA executes inference only.
 
-## Firmware contents
+## Current model limits
 
-- `main.c` — embeds and copies the NNPA model into NNPA SRAM, loads three test images, runs inference and prints results over UART.
-- `generate_board_data.py` — verifies the NNPA artifact size/SHA-256 and creates a C header containing the NNPA words and three labelled input samples.
-- `Makefile` — compiles the firmware for `EVBTINY`.
+- Whole-image classes: `1_person`, `2_person`, `3_person`.
+- No `0_person` class, no `>3` class, and no bounding-box output.
+- Dataset: 59 one-person, 8 two-person, 4 three-person images. All 4 three-person images originate from one source group.
+- The existing model misclassified two of the three initial physical-board samples. Testing all 71 images is an inference audit, not an independent accuracy test, because these images were used in model development/training.
 
-## Inputs
+## Firmware files
 
-Three samples from the canonical dataset archive:
-- `1_person/I1__008__120x160.png`
-- `2_person/I2__007__120x160.png`
-- `3_person/I3__004__120x160.png`
+- `main.c` embeds the NNPA model and up to 16 preprocessed images, copies NNPA into NNPA SRAM, runs each image and prints machine-readable `RESULT` records.
+- `generate_board_data.py` verifies the NNPA size/SHA-256 and selects images from the ZIP manifest.
+- `Makefile` builds for `EVBTINY`; pass `BATCH_START` and `BATCH_SIZE` to select a batch.
 
-Preprocessing: grayscale, Lanczos resize from 160x120 to 40x30, 1200 uint8 bytes per image.
-
-## Build
-
-From this directory:
+## Build one batch
 
 ```bash
-make prepare-data
+make prepare-data BATCH_START=0 BATCH_SIZE=16
 make check-inputs
 make all board=EVBTINY
 ```
 
-The build completed on 2026-11-18. Generated firmware binary SHA-256:
-`5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`.
+`BATCH_START` is a zero-based offset into the 71 labelled images. `BATCH_SIZE` must be 1..16. Three pending zero-person images are skipped.
 
-## Run from SRAM only
+Five batches cover the archive:
 
-Use the Evaluation Kit manual's Wait Start sequence:
-1. Press and hold `PWR_OFF` on ColibryProbe.
-2. Press and hold the EvalboardTiny User Button.
-3. Release `PWR_OFF`.
-4. Release the User Button.
+| Batch | Start | Size |
+|---|---:|---:|
+| 0 | 0 | 16 |
+| 1 | 16 | 16 |
+| 2 | 32 | 16 |
+| 3 | 48 | 16 |
+| 4 | 64 | 16 (generator takes remaining 7) |
 
-UART console: `/dev/ttyUSB2`, 115200 baud. Configure and start capture before launching the loader:
+Before generating the next batch, save the previous binary under a distinct name, such as `build/batches/batch_00.bin`. Rebuild after each `make prepare-data` call.
+
+## Run a batch from SRAM only
+
+Use the Evaluation Kit Wait Start sequence: hold PWR_OFF, hold the EvalboardTiny User Button, release PWR_OFF, then release the User Button.
+
+Capture UART `/dev/ttyUSB2` at 115200 baud before invoking the loader:
 
 ```bash
 stty -F /dev/ttyUSB2 115200 raw -echo -ixon -ixoff cs8 -cstopb -parenb
-cat /dev/ttyUSB2 > build/uart_own_count_cnn.log &
+cat /dev/ttyUSB2 > build/batch_00_uart.log &
 UART_PID=$!
 sleep 2
-```
-
-In this Ubuntu VM, system `python3` lacks PyFtdi. Invoke the SDK SRAM loader with the flash environment's Python, which has PyFtdi 0.57.2:
-
-```bash
 sudo "$HOME/colibry-flash-env/bin/python" \
   "$HOME/colibryNPU_SDK/riscv_runtime/tools/bin_loader/colibry-sramtool.py" \
-  "$PWD/build/own_count_cnn_sram_demo.bin" \
-  0x10000000 --run \
+  "$PWD/build/batches/batch_00.bin" 0x10000000 --run \
   -p "ftdi://ftdi:4232hp:5:2/1"
-```
-
-After allowing the app to finish, stop capture and inspect:
-
-```bash
 sleep 30
 kill "$UART_PID" 2>/dev/null || true
 wait "$UART_PID" 2>/dev/null || true
-cat build/uart_own_count_cnn.log
 ```
 
-**Do not use `toflash`, `make nnpa`, or the flash programming tool for this demonstration.** The SRAM loader writes the firmware to volatile SRAM at `0x10000000`; the app copies the embedded NNPA into NNPA SRAM. It does not access or modify external flash sector `0x20000`.
+Each `RESULT,index,expected,predicted_id,logit0,logit1,logit2` record contains a dataset index, the true manifest label, a predicted class ID (0=1_person, 1=2_person, 2=3_person), and raw uint8 logits.
 
-## Hardware test result — 2026-11-18
+**Do not use `toflash`, `make nnpa`, or the flash programming tool for this evaluation.** The SRAM loader writes firmware only to volatile SRAM at `0x10000000`; the firmware copies NNPA into NNPA SRAM. External flash sector `0x20000` remains unchanged.
 
-The physical board successfully loaded the NNPA (model ID `0x723E`) and completed all three inference calls. Input size register was 75 x 16-byte words = 1200 bytes; output shape was `[1,1,3]`.
+## Initial hardware run
 
-| Sample | Expected | Board prediction |
-|---|---|---|
-| 1_person | 1_person | 1_person — match |
-| 2_person | 2_person | 1_person — mismatch |
-| 3_person | 3_person | 2_person — mismatch |
+The first 3-image board run loaded model ID `0x723E`, accepted 1200-byte input tensors, and completed all three inference calls. Host and board argmax predictions agreed for all three images, but only one true label was classified correctly.
 
-Host INT8 TFLite and board predictions matched on the same three images. Raw uint8 outputs differed by at most 11 levels, so bit-exact output parity is not established. Only one of the three labels was classified correctly. This is a successful hardware execution demonstration, not a reliable people counter.
+The full 71-image run measures outputs from the current model on the existing dataset. It does not demonstrate independent generalization.
 
-After the app completes, it loops indefinitely and the LED remains off. A normal power cycle/boot returns to the flash-resident firmware. The external flash was not changed.
+## Persistent deployment and live camera
 
-## Known model limitation
+The present SRAM demo does not capture camera frames. Flashing only the NNPA file will not create a live detector. A persistent application requires bootable firmware that configures the camera, preprocesses frames to the trained 40x30 grayscale input, loads the NNPA model from a verified flash location, and runs inference.
 
-The dataset currently has 59 one-person, 8 two-person and 4 three-person samples. All four three-person images belong to one source group. The previous validation split leaks source groups, and recall was zero for the 2-person and 3-person validation examples. Collect more independent 2-person and 3-person images before retraining and claiming useful counting accuracy.
+Do not replace sector `0x20000` yet. It currently contains the historical 14,224-byte detector NNPA followed by the preserved 51,312-byte original tail. The new NNPA is 19,392 bytes and overlaps a larger portion of that tail. Preserve both verified backups while a flash layout and camera pipeline are designed.
 
