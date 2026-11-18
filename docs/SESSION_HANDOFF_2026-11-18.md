@@ -224,3 +224,18 @@ User must pull the updated `main` and run `python -m py_compile` locally first. 
   - `main`
   - `simple_person_cnn/model/own_count_experiment/`
 - Next action: run the cache-safe reader for a **256-byte probe only** at flash address 0x20000, save to a new output filename, and inspect the probe result. Do not yet run the full 64 KiB read. The helper automatically restarts CPU in finally; LED may pause during JTAG/SPIMF initialization.
+
+
+## Cache-safe 256-byte flash probe — 2026-11-18
+
+User ran the new helper from the updated local repository:
+
+- JTAG connection succeeded; IDCODE `0x249511c3`.
+- CPU halt occurred during SPIMF initialization as expected.
+- Flash identification succeeded.
+- Read completed: address `0x020000`, size 256 bytes.
+- Output file: `/home/nagaraju/models/edgeguard_own_count/flash_backups/cache_safe_probe_256_0x20000.bin`
+- SHA-256: `cee24b3a287eacef223741627cd8e36d4a169055e30271afbf05fa310998f81c`
+- CPU restart command sent successfully with boot address `0x10000000`.
+- This is the first hardware run of the cache-safe helper. The 256-byte content has not yet been inspected, so do not infer correctness solely from length/checksum. Next inspect the probe bytes locally and compare them to offsets 0x20000–0x200FF in the earlier (untrusted) backup. Do not yet read the full sector.
+- No flash erase/program operations were called.
