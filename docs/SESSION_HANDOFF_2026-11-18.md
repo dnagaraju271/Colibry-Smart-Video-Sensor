@@ -95,3 +95,21 @@ The user inspected the saved 64 KiB backup locally (no board connection was used
 
 ### Next diagnostic (local files only)
 Inspect contiguous non-`00`/`FF` ranges and 256-byte block patterns in the backup, compare the backup against the local CNN `.nnpa` file (if present), and inspect the exact `read_flash_array()` implementation used for the read. Do not perform another board read or any flash write until this offline validation explains the sparse pattern.
+
+
+## Offline flash-backup structure and CNN comparison — 2026-11-18
+
+The user ran the offline inspection script against the local 65536-byte backup. Results:
+
+- Backup SHA-256 reconfirmed: `8bf446e0ca7a095313b956001ea3046fa328380ce15fe6cc9106eaea104bbcb8`.
+- Exact CNN NNPA artifact at `~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite.nnpa` is 19,392 bytes, SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`.
+- The full NNPA binary and its first 64 bytes were both not found anywhere in the 64 KiB backup.
+- Nonzero-byte ranges and 256-byte classification show an unusual repeating pattern: many 4 KiB regions contain long all-zero or all-`0xFF` runs with a small mixed block at each 4 KiB boundary. Examples include 0x21100-0x21EFF all 0xFF followed by mixed 0x21F00-0x220FF; later regions repeat similar zero/FF blocks.
+- The first 16 bytes of the sector remain `7B 3F 79 03 00 50 00 FF FF 0F C1 27 00 00 00 00`.
+- This pattern could be actual sparse flash contents, but the JTAG/SPIMF read transport has not been validated for 4096-byte reads. `FlashAccess.read_flash_array()` simply passes `nbyte` to `self.ll_intf.exchange(..., nbyte)`; this does not itself establish that the interface returned every requested byte faithfully.
+- Therefore: the local file checksum and file length are verified, but the physical-sector read fidelity remains unverified. Do not infer flash corruption or sector structure yet.
+- No flash writes/erases occurred.
+
+### Next step — inspect read transport offline
+
+Inspect the source implementation of `JtagSpimfInterface.exchange()` and how it services read lengths/chunks, especially any 256-byte burst limits. Do not reconnect to the board or repeat a flash read until this software path is reviewed. No programming decision should rely on this backup until its transport integrity is established.
