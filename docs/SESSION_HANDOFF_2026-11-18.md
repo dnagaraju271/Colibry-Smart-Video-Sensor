@@ -693,3 +693,35 @@ Confirmed distinctions:
 2. Review/adjust host model and evaluate with a source-group-aware protocol where feasible. With all 3_person examples in one group, independent 3_person generalization is not measurable until additional groups are collected.
 3. Run a batch-based board evaluation using SRAM-only firmware and compare board outputs with host INT8 TFLite. Use a small number of images per batch to remain within 128 KiB SRAM.
 4. Only after model behavior and camera inference runtime are verified should we consider a persistent flash deployment.
+
+## Board inference audit expanded to all 71 own-dataset images — 2026-11-18
+
+User asked to test existing images on the physical board and later flash a persistent people detector.
+
+Important scope/technical facts:
+- On-board training is not supported; training remains on Ubuntu host. Colibry NNPA executes inference.
+- Current model is a whole-image three-way count classifier (1, 2, or 3 visible people), not a bounding-box/localization detector. It has no zero-person or >3 class, and current firmware does not capture live camera frames.
+- First physical SRAM test on 3 images completed; host and board class argmax agreed, but only 1/3 true labels matched. The model should not be permanently deployed as a reliable detector without further validation.
+- All 71 existing images may be evaluated on board, but must be done in batches. Each input is 1200 bytes, so 71 inputs use 85,200 bytes before firmware/model/code overhead; embedding all 71 into one image risks exceeding 128 KiB SRAM.
+- A 16-image cap keeps one build conservative. Five batches start at 0,16,32,48,64 with size 16 (generator truncates last batch to remaining seven). This entire data evaluation is not independent generalization: these samples were used in prior model development/training, split leaks source groups, all four 3_person samples come from a single source group.
+
+### New batch evaluator committed
+
+Files updated under `projects/own_dataset_person_count_cnn/board_firmware/`:
+- `generate_board_data.py`: reads all labelled archive entries directly from the manifest, validates class folder vs visible count, skips pending zero-person originals, uses existing grayscale Lanczos 40x30 preprocessing, pins NNPA size 19,392 and SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`, supports `--batch-start` and `--batch-size` up to 16, generates expected class IDs, dataset global indices, file names and batch macros.
+- `main.c`: uses generated expected class ID instead of incorrectly comparing predicted class to per-batch loop index; prints machine-readable `RESULT,index,expected,predicted_class_id,logit0,logit1,logit2` line for each image; includes batch count in banner and completion line.
+- `Makefile`: adds `BATCH_START` and `BATCH_SIZE` variables passed to the generator.
+- `README.md`: documents five-batch SRAM-only test and prohibits `toflash`/`make nnpa`; explains this is a dataset inference audit, not independent accuracy.
+- `summarize_batch_results.py`: aggregates UART `RESULT` lines into confusion matrix, per-class precision/recall/F1, detects missing/duplicate/malformed indices, optionally emits CSV.
+
+These updated files are committed but not yet pulled or syntax-checked/compiled locally. No flash operation or new physical board run occurred.
+
+### Next step
+
+User should fetch and fast-forward local main preserving untracked data and model outputs. Then py_compile generator/summarizer, generate batch 0 with `make prepare-data BATCH_START=0 BATCH_SIZE=16`, check and build. Inspect linker SRAM use/ELF and ensure fit before running. Build-only first; no board loader until batch-0 build passes. Then run each batch from SRAM using `colibry-sramtool.py` with `~/colibry-flash-env/bin/python`, capture UART to distinct logs, and summarize all logs with `summarize_batch_results.py`. The current board may still have the prior SRAM test application running; no need to reload until batch firmware is ready.
+
+### Persistent flash deployment is a separate later task
+
+- Current flash sector 0x20000 holds old 14,224-byte detector NNPA prefix + original preserved tail. New own CNN NNPA is 19,392 bytes and would overwrite 5,168 more bytes of original tail if placed at same start address. Backups must stay preserved; do not replace sector until the flash layout, old tail bytes that may be live, boot firmware, and loader path are understood.
+- Even placing an NNPA bitstream in flash does not create live detection. Persistent firmware must initialize the camera, acquire frames, convert grayscale/resample to 40x30, load model from a known address into NNPA SRAM, run inference and handle output. Current firmware is only static-image SRAM test.
+- Do not flash any new model or firmware yet.
