@@ -239,3 +239,21 @@ User ran the new helper from the updated local repository:
 - CPU restart command sent successfully with boot address `0x10000000`.
 - This is the first hardware run of the cache-safe helper. The 256-byte content has not yet been inspected, so do not infer correctness solely from length/checksum. Next inspect the probe bytes locally and compare them to offsets 0x20000–0x200FF in the earlier (untrusted) backup. Do not yet read the full sector.
 - No flash erase/program operations were called.
+
+
+## Cache-safe 256-byte probe content inspection — 2026-11-18
+
+The user inspected `cache_safe_probe_256_0x20000.bin` locally.
+
+- Probe SHA-256: `cee24b3a287eacef223741627cd8e36d4a169055e30271afbf05fa310998f81c`.
+- Distribution: 97 zero bytes, 4 `0xFF` bytes, 155 other values.
+- The bytes contain varied instruction-like/binary data beyond the 16-byte header; this is materially different from the earlier untrusted dump, where most of the corresponding 256-byte range was zero.
+- Comparison against the first 256 bytes of the earlier (untrusted) 64 KiB backup: not identical; 149 byte positions differ.
+- Both reads report the same leading 12-byte prefix `7B 3F 79 03 00 50 00 FF FF 0F C1 27`; the prior read then produced mostly zero padding where the cache-safe read returns varied data.
+- This is consistent with the confirmed stale `self_curr_mmap_waddr` defect affecting multi-FIFO reads. The corrected probe looks plausible, but we have not yet verified the whole sector or confirmed exact model placement.
+- Helper CPU cleanup printed `CPU restart command sent (boot address 0x10000000)`.
+- No flash write/erase occurred.
+
+### Next action
+
+Run the cache-safe helper over the full 64 KiB sector at 0x20000, using 256-byte top-level read transactions and a new output path. Preserve both earlier files unchanged. Inspect the full corrected backup SHA-256 and byte/block distribution, then compare against the known CNN `.nnpa` artifact. Do not program or erase flash.
