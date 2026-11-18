@@ -815,3 +815,26 @@ User successfully loaded preserved `build/batches/batch_00.bin` via JTAG SRAM lo
 ### Next action
 
 Run local summarizer for batch 0 with `--expected-images 16 --csv build/batch_00_results.csv` to preserve computed metrics, then generate batch 1 with `BATCH_START=16 BATCH_SIZE=16`, build, verify SRAM size remains below 128 KiB, preserve `build/batches/batch_01.bin` and SHA-256, and only then load batch 1 into SRAM. Do not overwrite batch 0 binary or UART log.
+
+## Batch 0 summary and batch 1 build completed — 2026-11-18
+
+User ran `summarize_batch_results.py build/batch_00_uart.log --expected-images 16 --csv build/batch_00_results.csv`.
+
+Batch 0 summary:
+- Unique results 16/16; missing indices none; unexpected indices none; duplicate/malformed/log errors 0.
+- Correct 14/16, accuracy 0.8750 on this batch.
+- Confusion matrix rows=true, columns=predicted, order 1_person,2_person,3_person: `[[8,0,0],[1,3,0],[0,1,3]]`.
+- Per-class: 1_person support 8, precision 0.8889, recall 1.0000, F1 0.9412; 2_person support 4, precision 0.75, recall 0.75, F1 0.75; 3_person support 4, precision 1.0, recall 0.75, F1 0.8571.
+- CSV saved at `build/batch_00_results.csv`; binary remains `build/batches/batch_00.bin`, SHA-256 `cd8a5fd4bb0fcb8210dd8d18cf024737214ad8ef28d9c7793d7e3613f80796c5`.
+
+Batch 1 generated and built:
+- start 16, size 16, dataset indices 16..31.
+- Manifest-selected samples include two 2_person (indices 16-17), two additional 2_person at 21-22, and twelve 1_person; generator printed exact filenames in user's log.
+- NNPA verified size 19,392 and SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`.
+- Build successful. text 66,144 bytes, data 20, BSS 12,496, total 78,660 bytes (0x13344), within 128 KiB SRAM.
+- Preserved binary: `build/batches/batch_01.bin` from board_firmware working directory. SHA-256 `2306e5b95f1a45bdb02aa72eed74b46230c9fda9f5a8f71b181a6dd152eb5fd5`.
+- Batch 1 is only built and saved; not yet loaded to board. No external flash write occurred.
+
+### Next action
+
+Run batch_01.bin through JTAG SRAM loader with continuous UART capture to unique `build/batch_01_uart.log`. Expect 16 RESULT rows for global dataset indices 16-31. Wait 45 seconds after loader exit. Verify loader exit 0 and RESULT count 16, then summarize with expected-images 16 and write `batch_01_results.csv`. Do not generate batch 2 until batch 1 execution and log are verified.
