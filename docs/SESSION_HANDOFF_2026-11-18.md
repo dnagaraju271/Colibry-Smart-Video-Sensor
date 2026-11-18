@@ -738,3 +738,32 @@ After the initial batch commit, the main.c final banner was updated to report dy
 ### Batch banner detail
 
 Final board firmware banner prints `OWN_COUNT_SAMPLE_COUNT`, `OWN_COUNT_BATCH_START`, and `OWN_COUNT_TOTAL_IMAGES`; top-level source comment now describes up to 16 embedded images rather than three. The output completion banner uses the actual dynamic sample count.
+
+## Batch 0 (images 0-15) board firmware built — 2026-11-18
+
+User pulled origin/main from 4f8b5e7 to current fast-forward head. Pre-existing untracked local paths were preserved: `datasets/mobile_160x120/processed/`, `experiments/professor_demo/task2_small_cnn/`, `main`, and `simple_person_cnn/model/own_count_experiment/`.
+
+Both `generate_board_data.py` and `summarize_batch_results.py` passed local Python AST syntax parsing.
+
+Batch 0 generated successfully:
+- NNPA size 19,392 bytes, SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`.
+- Dataset manifest reports 71 eligible labelled images.
+- Selected global indices 0-15, 16 images.
+- Input shape 30x40x1, 1200 uint8 bytes per image.
+- Batch 0 distribution in manifest order: 4x 3_person, 4x 2_person, 8x 1_person.
+- Selected images are printed in user's batch log.
+
+`make check-inputs` passed. `make all board=EVBTINY` compiled and linked successfully.
+- Reported text: 66,144 bytes.
+- Data: 20 bytes.
+- BSS: 12,496 bytes.
+- Total: 78,660 bytes (0x13344).
+- Configured SRAM region: 128 KiB (131,072 bytes). Nominal total-size headroom: 52,412 bytes (~51.2 KiB).
+- SRAM binary: `build/own_count_cnn_sram_demo.bin`, about 65 KiB.
+- Batch 0 binary SHA-256: `cd8a5fd4bb0fcb8210dd8d18cf024737214ad8ef28d9c7793d7e3613f80796c5`.
+
+This is build-only evidence. The batch 0 binary has NOT yet been loaded onto the board. External flash was not written.
+
+### Next action
+
+First copy `build/own_count_cnn_sram_demo.bin` to a unique preserved file `build/batches/batch_00.bin` and verify its hash is `cd8a5fd4bb0fcb8210dd8d18cf024737214ad8ef28d9c7793d7e3613f80796c5`. Then run SRAM loader with UART capture using `~/colibry-flash-env/bin/python`, capture results from UART. Do not generate later batches until batch_00.bin is safely copied. Do not run toflash or make nnpa.
