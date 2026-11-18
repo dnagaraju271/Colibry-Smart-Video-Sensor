@@ -30,6 +30,9 @@
 
 #define CAMERA_ONCHIP_MCLK      1u
 #define CAMERA_FPS              1u
+
+/* Set to 0 to restore the physical PAG7920LT single-frame trigger. */
+#define CAMIF_PATTERN_TEST      1u
 #define FRAME_TIMEOUT_MS        5000u
 #define FRAME_START_TIMEOUT_MS   5000u
 #define INFERENCE_TIMEOUT_MS    3000u
@@ -223,6 +226,10 @@ static void print_pipeline_registers(const char *label)
            (unsigned long)colibryISP->regmap->isp_scaler_size_out.word);
     printf("ISP_INT_STATUS: 0x%08lx\n",
            (unsigned long)colibryISP->regmap->isp_int_status.word);
+    printf("CAMIF_PATGEN_CFG: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_patgen_cfg.word);
+    printf("CAMIF_PATGEN_STATUS: 0x%08lx\n",
+           (unsigned long)CAMIF_reg->camif_patgen_status.word);
     printf("===== END PIPELINE REGISTERS =====\n");
 }
 
@@ -294,6 +301,36 @@ static uint8_t read_model_input_pixel(uint32_t x, uint32_t y)
  * This FIFO is separate from the CAMIF-to-ISP stream and NNPA input memory.
  * The diagnostic read does not modify the captured NNPA tensor.
  */
+/*
+ * Diagnostic-only CAMIF synthetic source. PATGEN_MUX_SEL=1 selects the
+ * internal generator and disables the physical camera data path.
+ * HAL documentation defines DATA_MODE=1 as incrementing data and
+ * IMG_NCHAN as the number of channels used; this test requests one.
+ */
+static void configure_camif_pattern_generator(void)
+{
+    CAMIF_reg->camif_patgen_cfg.fields.patgen_data_mode = 1u;
+    CAMIF_reg->camif_patgen_cfg.fields.patgen_mux_sel = 1u;
+    CAMIF_reg->camif_patgen_cfg.fields.patgen_img_nchan = 1u;
+    CAMIF_reg->camif_patgen_cfg.fields.patgen_slow_rate = 0u;
+    CAMIF_reg->camif_patgen_cfg.fields.lfsr_auto_restart = 0u;
+
+    CAMIF_reg->camif_patgen_ramp_init.fields.patgen_ramp_init0 = 0u;
+    CAMIF_reg->camif_patgen_ramp_init.fields.patgen_ramp_init1 = 0u;
+    CAMIF_reg->camif_patgen_ramp_init.fields.patgen_ramp_init2 = 0u;
+
+    colibrySCU->delay_ms(1u);
+    printf("CAMIF_PATTERN_TEST: enabled\\n");
+    printf("CAMIF_PATTERN_CFG: 0x%08lx\\n",
+           (unsigned long)CAMIF_reg->camif_patgen_cfg.word);
+    printf("CAMIF_PATTERN_RAMP_INIT: 0x%08lx\\n",
+           (unsigned long)CAMIF_reg->camif_patgen_ramp_init.word);
+    printf("CAMIF_PATTERN_MUX: %lu\\n",
+           (unsigned long)CAMIF_reg->camif_patgen_cfg.fields.patgen_mux_sel);
+    printf("CAMIF_PATTERN_CHANNELS: %lu\\n",
+           (unsigned long)CAMIF_reg->camif_patgen_cfg.fields.patgen_img_nchan);
+}
+
 static void dump_camif_fifo_samples(void)
 {
     const uint32_t available =
@@ -413,11 +450,19 @@ static int capture_one_frame(void)
     colibryISP->regmap->isp_int_clear.word = 0x3Fu;
 
     NNPA_reg->nnpa_control.fields.cpu_mem_access = 0u;
+#if CAMIF_PATTERN_TEST
+    configure_camif_pattern_generator();
+#endif
+
     print_pipeline_registers("BEFORE_TRIGGER");
 
+#if CAMIF_PATTERN_TEST
+    printf("\nTriggering one CAMIF synthetic frame...\n");
+    CAMIF_reg->camif_patgen_control.word = PATGEN_FRAME_START_MASK;
+#else
     printf("\nTriggering one PAG7920LT frame...\n");
     colibryBoard.cameraPAG7920LT.trigSingleFrame();
-
+#endif
     for (elapsed = 0u; elapsed < FRAME_TIMEOUT_MS; ++elapsed) {
         status = NNPA_reg->nnpa_int_status.word;
 
@@ -675,6 +720,12 @@ int main(void)
         printf("CAMERA_CAPTURE_RESULT: FAIL (%d)\n", result);
         return 4;
     }
+
+#if CAMIF_PATTERN_TEST
+    printf("PATGEN_TEST_COMPLETE: frame accepted by ISP/NNPA input path; inference skipped\\n");
+    printf("SYNTHETIC_INPUT: not a real camera scene\\n");
+    return 0;
+#endif
 
     result = run_one_inference();
     if (result != 0) {
