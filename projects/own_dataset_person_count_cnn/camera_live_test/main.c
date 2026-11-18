@@ -309,7 +309,7 @@ static int capture_one_frame(void)
 
     if (elapsed >= FRAME_START_TIMEOUT_MS) {
         NNPA_reg->nnpa_control.fields.cpu_mem_access = 1u;
-        printf("ERROR: PAG7920LT frame-start timeout on CAM_PCLK_DIO after %lu ms\\n",
+        printf("ERROR: PAG7920LT frame-start timeout on CAM_PCLK_DIO after %lu ms\n",
                (unsigned long)FRAME_START_TIMEOUT_MS);
         print_pipeline_registers("FRAME_START_TIMEOUT");
         print_pipeline_interrupt_flags();
@@ -317,9 +317,9 @@ static int capture_one_frame(void)
     }
 
     colibryBoard.cameraPAG7920LT.clearFrameStartIrq();
-    printf("CAMERA_FRAME_START: DETECTED on CAM_PCLK_DIO after %lu ms\\n",
+    printf("CAMERA_FRAME_START: DETECTED on CAM_PCLK_DIO after %lu ms\n",
            (unsigned long)elapsed);
-    printf("Waiting for NNPA_DATA_LOADED...\\n");
+    printf("Waiting for NNPA_DATA_LOADED...\n");
 
     for (elapsed = 0u; elapsed < FRAME_TIMEOUT_MS; ++elapsed) {
         status = NNPA_reg->nnpa_int_status.word;
