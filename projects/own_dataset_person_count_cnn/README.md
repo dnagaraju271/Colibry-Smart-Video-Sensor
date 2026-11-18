@@ -87,3 +87,32 @@ The original 64 KiB sector backup and current sector image have been recovered a
 ## Scope
 
 This project covers the user's own dataset, a compact two-trainable-layer CNN, and the Colibry board inference demonstration. It does not add object tracking, bounding boxes, dashboards, or unrelated features.
+
+
+## Full physical board audit of current 71-image dataset (2026-11-18)
+
+The compact CNN NNPA was executed on the physical Colibry EvalboardTiny using five SRAM-only firmware batches. All 71 labelled images were processed; all UART records were present with no duplicates or missing indices.
+
+**Observed results on these existing development images: 68/71 correct (95.77%).**
+
+| Actual / Predicted | 1_person | 2_person | 3_person |
+|---|---:|---:|---:|
+| 1_person (59) | 59 | 0 | 0 |
+| 2_person (8) | 2 | 6 | 0 |
+| 3_person (4) | 0 | 1 | 3 |
+
+| Class | Precision | Recall | F1 |
+|---|---:|---:|---:|
+| 1_person | 96.72% | 100% | 98.33% |
+| 2_person | 85.71% | 75% | 80.00% |
+| 3_person | 100% | 75% | 85.71% |
+
+All three observed errors are undercounts: two 2_person samples were called 1_person, and one 3_person sample was called 2_person.
+
+**Critical evaluation caveat:** this is a complete inference audit on the current development dataset, not independent test accuracy or a real-world generalization result. The images were already used during model development/training and validation; the original image-level split leaks source groups, and all four 3_person images come from one source group. Class distribution is imbalanced at 59/8/4.
+
+The board execution test confirms the compiled model executes on the Colibry NNPA for all 71 inputs. Current model capabilities remain limited to whole-image count classification for 1, 2, or 3 people. It has no 0-person or >3 output, does not produce boxes, and the test firmware does not acquire live camera frames.
+
+Next: collect more independent 2-person and 3-person scenes, label pending zero-person originals, retrain on host, compile a new NNPA, and validate again. Live detection needs a camera-to-grayscale-40x30-to-NNPA firmware path. Do not permanently flash the new model or overwrite sector 0x20000 until that runtime and flash layout are reviewed.
+
+Full raw UART logs and CSV `build/all_71_board_results.csv` remain on the user's Ubuntu VM under `projects/own_dataset_person_count_cnn/board_firmware/build/`.
