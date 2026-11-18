@@ -339,7 +339,7 @@ No external flash write, erase, or programming operation was performed during re
 - The script supports --check-only, which checks dataset integrity, split, architecture, and class distributions without starting training or writing model files.
 - Previously run host training used 56 training and 15 validation images; early stopped at epoch 21 with best epoch 14. Train accuracy was 1.0 and validation accuracy 0.8, but the confusion matrix [[12,0,0],[2,0,0],[0,1,0]] shows the model failed to identify 2-person and 3-person validation examples. This model is not yet a reliable people counter.
 - Legacy Keras exporter: simple_person_cnn/export_legacy_keras_for_colibry.py; it copies the same weights into legacy tf_keras and checks numerical parity.
-- A full-INT8 TFLite and 19,392-byte NNPA compile artifact were already produced earlier. NNPA file: ~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite.nnpa; the previously recorded SHA-256 is ee9940c9edb9c66e6cbf6fc335a1f19850a90a27c8b6a6a09b7d99abba6443654? Verify the precise hash with sha256sum before deployment.
+- A full-INT8 TFLite and 19,392-byte NNPA compile artifact were already produced earlier. NNPA file: ~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite.nnpa; the previously recorded SHA-256 is ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e.
 - The Colibry board does not train neural-network weights. Training is performed on the Ubuntu host using the user's dataset; Colibry NNPA runs inference using a compiled NNPA bitstream loaded by suitable firmware.
 
 ### Hardware/deployment status
