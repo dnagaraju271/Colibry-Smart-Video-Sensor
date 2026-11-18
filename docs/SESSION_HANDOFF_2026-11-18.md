@@ -500,3 +500,19 @@ User supplied the full `colibry-sramtool.py` source excerpt and artifact output.
 ### Before invoking SRAM loader
 
 Perform a local environment/serial preflight: confirm Python used for loader has `numpy` and `pyftdi`, check current USB device permissions and availability of a UART terminal (`picocom`, `minicom`, or `screen`), and confirm `/dev/ttyUSB2` is the ColibryProbe UART. Then open UART at 115200 baud before invoking loader. JTAG loader will halt current CPU; user LED blink will stop while SRAM test app runs. Firmware does a brief LED pulse after NNPA load then will keep LED off while it prints three test inferences and then loops forever. A power cycle/standard boot will return to flash-resident firmware, without changing external flash.
+
+## SRAM-loader runtime dependency and UART preflight — 2026-11-18
+
+User ran the dependency/device preflight:
+
+- `~/colibry-flash-env/bin/python` has NumPy 2.5.4 and PyFtdi 0.57.2; JTAG modules import successfully.
+- System `/usr/bin/python3` cannot import `pyftdi` (ModuleNotFoundError).
+- `/dev/ttyUSB2` exists with owner root and group dialout, mode crw-rw----; manual identifies this as the UART VCOM at 115200 baud.
+- No `picocom`, `minicom`, or `screen` executable is installed.
+- SRAM firmware binary exists at `experiments/professor_demo/task2_small_cnn/build/own_count_cnn_sram_demo.bin`, 49 KiB, SHA-256 `5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`.
+
+Do not use `make tosram` as written, because runtime.mk hardcodes `python3` and the system Python lacks PyFtdi. Instead, execute the exact SDK SRAM loader directly with `~/colibry-flash-env/bin/python`, passing the built binary, SRAM address 0x10000000, `--run`, and JTAG URL `ftdi://ftdi:4232hp:5:2/1`.
+
+Before the loader, configure `/dev/ttyUSB2` using `stty -F ... 115200 raw -echo` and start `cat /dev/ttyUSB2` into a build log. Check that the capture process remains alive, then run the SRAM loader. After it returns, capture several additional seconds, terminate only the local `cat` process, and print the log. The board app should output model configuration and three sample predictions. It pulses the user LED after model configuration, then leaves it off while it loops.
+
+No serial-terminal installation is needed. The direct SRAM loader writes only SRAM address 0x10000000 and starts the CPU; the inspected script contains no external flash write/erase path. The app itself embeds the NNPA bytes in its firmware image and copies them into NNPA SRAM. Do not use `toflash` or `make nnpa`.
