@@ -1,6 +1,8 @@
-# Task 2 — Minimal two-layer CNN
+# Simple person / no-person CNN experiment
 
-This is the small CNN requested by the professor. It uses an image as input and has exactly two trainable layers:
+This directory contains an earlier binary image-classification exercise for `person` versus `no_person` images. It is separate from the team's own three-class person-count CNN project.
+
+## Architecture
 
 | Stage | Operation | Configuration |
 |---|---|---|
@@ -9,34 +11,13 @@ This is the small CNN requested by the professor. It uses an image as input and 
 | Shape operation | Flatten | No trainable parameters |
 | Layer 2 | Dense | 1 output, sigmoid |
 
-The output is a binary classification:
-- `no_person` — probability below 0.5
-- `person` — probability of 0.5 or above
+Trainable parameters: 4,137.
 
-This is a tiny classification test, not a bounding-box detector.
+## Train and test
 
-## Install
+The binary experiment uses `train_demo.py` and `simple_cnn.py`. See [DEMO_GUIDE.md](DEMO_GUIDE.md) for the earlier two-image demonstration. That tiny experiment does not establish generalization accuracy.
 
-Use the Python environment on the development computer:
+## Separate three-class own-dataset CNN
 
-```bash
-python3 -m pip install tensorflow==2.18.1
-```
+The three-class model using the team's 160x120 grayscale dataset is maintained separately at [projects/own_dataset_person_count_cnn](../projects/own_dataset_person_count_cnn/README.md). It has 40x30 input and classes `1_person`, `2_person`, and `3_person`.
 
-## Train and export
-
-From the repository root, after placing collected images in the folders described in `task3_dataset/README.md`:
-
-```bash
-python3 experiments/simple_person_cnn/simple_cnn.py --epochs 5
-```
-
-The script reports the model architecture and validation accuracy, then saves the Keras and TensorFlow Lite models in the local `model/` folder.
-
-## Test one image
-
-```bash
-python3 experiments/simple_person_cnn/simple_cnn.py --predict /path/to/person.jpg
-```
-
-The TensorFlow Lite file is an export for the next compatibility check. It is not automatically a Colibry board executable; the Colibry compiler/SDK must accept the model before board inference can be claimed.
