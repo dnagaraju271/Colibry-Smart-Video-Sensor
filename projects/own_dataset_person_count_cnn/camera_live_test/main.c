@@ -65,8 +65,6 @@ static void copy_model_to_nnpa_memory(void)
 static void configure_isp_for_pag7920_mono(void)
 {
     /*
-
-    /*
      * PAG7920LT is configured by the SDK in QQVGA mode (160x120).
      * The sensor delivers a single RAW grayscale channel, so Bayer2RGB
      * and RGB2GRAY stay bypassed. Only the scaler is enabled.
@@ -715,6 +713,22 @@ int main(void)
 
     printf("\nConfiguring ISP for monochrome downscale...\n");
     configure_isp_for_pag7920_mono();
+
+    /*
+     * Diagnostic experiment: issue the ISP soft-reset pulse after initial
+     * configuration, then verify that the scaler settings survive it.
+     */
+    printf("Applying ISP soft reset...\n");
+    colibryISP->isp_soft_reset();
+    colibrySCU->delay_ms(1u);
+    colibryISP->regmap->isp_int_clear.word = 0x3Fu;
+
+    printf("ISP_CTRL after reset: 0x%08lx\n",
+           (unsigned long)colibryISP->regmap->isp_ctrl.word);
+    printf("ISP scaler config after reset: 0x%08lx\n",
+           (unsigned long)colibryISP->regmap->isp_scaler_scaling_cfg.word);
+    printf("ISP output size after reset: 0x%08lx\n",
+           (unsigned long)colibryISP->regmap->isp_scaler_size_out.word);
 
     printf("CAMIF input: 160x120 RAW8\n");
     printf("ISP cropper: bypass\n");
