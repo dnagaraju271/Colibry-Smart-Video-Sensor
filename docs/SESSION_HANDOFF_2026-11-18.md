@@ -1021,3 +1021,52 @@ Final batch 4 generated and built:
 ### Next action
 
 Run batch 4 on the physical board using the checksum-verified `build/batches/batch_04.bin`, continuous UART capture at 115200 to `build/batch_04_uart.log`, expect 7 RESULT rows for global indices 64..70, and wait at least 30 seconds after loader exit. Verify loader exit 0 and result count 7. Summarize with `--expected-images 7 --start-index 64`. Then aggregate all logs `batch_00_uart.log` through `batch_04_uart.log` with `--expected-images 71 --start-index 0 --csv build/all_71_board_results.csv` for the final whole-dataset confusion matrix. This remains an audit on development/training images, not independent test accuracy. External flash untouched.
+
+## Complete 71-image physical Colibry NNPA inference audit — 2026-11-18
+
+The fifth and final SRAM batch (dataset indices 64..70) ran successfully on the physical EvalboardTiny:
+- Loader exit code 0.
+- UART result count 7; indices 64..70 present, all expected labels 1_person and all predicted 1_person.
+- All seven inference calls completed.
+- Per-batch summary: 7/7, no missing or unexpected indices, no duplicate/malformed/log errors.
+- Final batch 4 binary SHA-256: `c3b0b2c3ee8f53f53ed0324c55c777ae5a75af27c8afe7acffe0346e816d539b`.
+- Final CSV: `build/batch_04_results.csv`.
+
+User aggregated all five UART logs with `summarize_batch_results.py` using `--expected-images 71 --start-index 0`. The final audit summary:
+- Unique results: 71/71.
+- Missing indices: none.
+- Unexpected indices: none.
+- Duplicate/malformed/missing-log errors: 0.
+- Correct predictions: 68/71.
+- Accuracy on this collected dataset: 0.9577 (95.77%).
+- Full CSV: `build/all_71_board_results.csv`.
+
+Final confusion matrix, rows=true / columns=predicted, class order [1_person, 2_person, 3_person]:
+
+| Actual / Predicted | 1_person | 2_person | 3_person |
+|---|---:|---:|---:|
+| 1_person | 59 | 0 | 0 |
+| 2_person | 2 | 6 | 0 |
+| 3_person | 0 | 1 | 3 |
+
+Per-class metrics:
+- 1_person: support 59, precision 0.9672, recall 1.0000, F1 0.9833.
+- 2_person: support 8, precision 0.8571, recall 0.7500, F1 0.8000.
+- 3_person: support 4, precision 1.0000, recall 0.7500, F1 0.8571.
+
+All three errors are undercounts: two `2_person` images were predicted `1_person`; one `3_person` image was predicted `2_person`. No overcount was observed in this 71-image audit.
+
+### Interpretation and limitations
+
+This is a complete physical-board inference audit on all 71 labelled images in the current dataset, not independent test accuracy. The 71 images have already been used in model development/training and/or validation; the earlier image-level split leaks five source groups between train and validation. All four `3_person` images come from one source group. The dataset is imbalanced (59/8/4). Do not claim 95.77% generalization or real-world accuracy.
+
+The test confirms the SRAM-loaded Colibry NNPA can execute the compiled own-count model for every current labelled image. The model is a whole-image classifier for 1, 2 or 3 people; it does not output bounding boxes, has no zero-person or >3 classes, and the test firmware uses static images rather than live camera capture.
+
+### Next development decisions
+
+1. Preserve `build/all_71_board_results.csv` and the five UART logs locally; optionally commit only a sanitized aggregate report (not firmware binaries or raw images) if desired.
+2. Collect independent capture groups, especially for 2_person and 3_person. Resolve/label pending zero-person images before deciding whether to add a 0_person class.
+3. Retrain on Ubuntu host (not on the Colibry board), then recompile the updated model and repeat host/board comparison.
+4. Before persistent flash deployment or live detection, implement/validate a camera capture + grayscale 40x30 preprocessing + NNPA inference firmware pipeline and confirm a safe flash layout. Do not erase/program sector 0x20000 yet; its original data and tail are backed up and preserved.
+
+All five test batches ran from volatile SRAM. No external flash programming occurred.
