@@ -1,50 +1,46 @@
 # Professor's basic board demonstrations
 
-This folder contains only the three demonstrations requested for the Colibry board meeting:
+This folder contains only the three demonstrations requested for the Colibry board assignment:
 
 1. A simple C LED blinker.
-2. A very small two-trainable-layer CNN using a grayscale image as input.
-3. Our own outdoor person / no-person image dataset.
+2. A very small CNN with exactly two trainable layers.
+3. Collection and organization of the team's own person-image dataset.
 
 ## 1. C LED blinker
 
-See [task1_c_blinker/README.md](task1_c_blinker/README.md). The already-tested board-specific C source must be copied here as `main.c`. It is deliberately not replaced with guessed GPIO or SDK function names.
+See task1_c_blinker/README.md for the C source and SDK Makefile.
 
-## 2. Simple CNN
+The physical board's red user LED has been observed blinking. The current booted LED firmware's provenance has not been re-verified against this repository's main.c.
 
-The image classifier has a 32 x 32 grayscale input, one Conv2D layer and one Dense output layer. Flatten only reshapes the feature map; it has no trainable parameters.
+## 2. Small CNN — own data and board inference
 
-Dataset folders are in `task3_dataset/images/`. After photographs have been collected and sorted, run from the repository root:
+See task2_small_cnn/README.md.
 
-```bash
-python3 -m pip install tensorflow==2.18.1
-python3 experiments/simple_person_cnn/simple_cnn.py --epochs 5
-```
+- Training is performed on the Ubuntu host using TensorFlow and the team's dataset.
+- Model architecture: Conv2D + Dense, with Flatten between them; exactly two trainable layers.
+- Input: 40 x 30 grayscale, one channel.
+- Output classes: 1_person, 2_person, 3_person.
+- The trained model has already been quantized to uint8 and compiled into an NNPA bitstream.
+- The SRAM-only test app embeds the NNPA bitstream in its firmware, copies it into NNPA SRAM, and tests one input from each class.
+- The SRAM test uses the SDK's tosram path and does not rewrite external flash sector 0x20000.
 
-The script trains the model, evaluates it on the validation images, and writes:
-- `simple_person_cnn.keras`
-- `simple_person_cnn.tflite`
+The current experiment is not a reliable people counter yet. Its prior image-level validation accuracy was 80%, but recall was zero for the 2-person and 3-person validation examples. The dataset is small and imbalanced, and all four 3-person images come from one source group.
 
-Both files are written to `experiments/simple_person_cnn/model/`.
+## 3. Own dataset
 
-To classify one image after training:
+Canonical archive:
 
-```bash
-python3 experiments/simple_person_cnn/simple_cnn.py --predict /path/to/image.jpg
-```
+datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip
 
-This is a small person / no-person classification experiment, not the full bounding-box detector.
+Current labeled distribution:
 
-## 3. Our own dataset
+| Class | Images |
+|---|---:|
+| 1_person | 59 |
+| 2_person | 8 |
+| 3_person | 4 |
+| **Total** | **71** |
 
-See [task3_dataset/README.md](task3_dataset/README.md). Put the photographs taken by the team into the matching train/validation folders. The image folders are currently empty placeholders; real photographs have not yet been collected.
+Three zero-person originals remain in pending_for_later_originals and are not part of the current three-class model. The extracted datasets/mobile_160x120/processed/ directory is byte-for-byte the same 71 labeled images from the archive; it is not additional data.
 
-## Move the files to the board computer
-
-After the changes are committed and pushed to GitHub, on the Ubuntu board computer:
-
-```bash
-git pull origin main
-```
-
-Run the CNN training/export on the development computer with the collected dataset. Copy the generated `.tflite` model and the board-compatible project files to the Colibry SDK workflow only after confirming the SDK's supported model format and operators.
+The class and source-group limitations are documented in the current session handoff at ../../docs/SESSION_HANDOFF_2026-11-18.md. More independently captured 2-person and 3-person examples are needed before claiming good generalization.
