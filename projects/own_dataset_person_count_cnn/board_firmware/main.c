@@ -253,8 +253,9 @@ int main(void)
     }
 
     printf("\n============================================\n");
-    printf("ALL THREE NNPA INFERENCE CALLS COMPLETED\n");
-    printf("This is a hardware execution test, not an accuracy claim.\n");
+    printf("ALL %u NNPA INFERENCE CALLS COMPLETED\n",
+           (unsigned int)OWN_COUNT_SAMPLE_COUNT);
+    printf("This is a dataset inference audit, not an independent accuracy test.\n");
     printf("The current dataset validation has weak 2/3-person recall.\n");
     printf("External flash was not accessed or modified by this app.\n");
     printf("============================================\n");
