@@ -1070,3 +1070,30 @@ The test confirms the SRAM-loaded Colibry NNPA can execute the compiled own-coun
 4. Before persistent flash deployment or live detection, implement/validate a camera capture + grayscale 40x30 preprocessing + NNPA inference firmware pipeline and confirm a safe flash layout. Do not erase/program sector 0x20000 yet; its original data and tail are backed up and preserved.
 
 All five test batches ran from volatile SRAM. No external flash programming occurred.
+
+## Live camera inference feasibility review — 2026-11-18
+
+The user wants to train the model on the board and test live from the camera.
+
+Clarification:
+- Colibry NNPA is an inference accelerator. CNN training remains on the Ubuntu host with TensorFlow. The model is then exported, quantized and compiled to NNPA format.
+- Existing dataset has 71 images: 59 1_person, 8 2_person, 4 3_person. This is small and severely imbalanced for multi-person count classification; all 4 three-person images are from a single source capture group. 95.77% is only inference accuracy on existing development images, not held-out generalization.
+- Current CNN predicts a whole-image class 1_person/2_person/3_person. It has no 0_person or >3 class and produces no bounding boxes.
+- Current batch firmware is static-image SRAM evaluation only: includes preprocessed dataset arrays and loads each via NNPA input loader. It does not capture camera frames.
+
+SDK camera path inspected:
+- `ColibryBoard::camera_init(image_width,image_height,onchip_mclk,expected_video_fps)` in `third_party/asygn-sdk-camera-pipeline/components_drivers/BOARDS/colibry_board.cpp` configures CAMIF, detects EIS316/HM0360/PAG7920LT sensor by version, configures camera clock/startup/flip and sensor image format.
+- `ColibryBoard::sensors_power_enable()` must be considered before camera init: `global_init()` powers sensors down by default; sensor rail enable method turns VDD_SENSORS_ENB low on EVBTINY and waits 50 ms.
+- `ColibryBoard::get_image_to_nnpa()` triggers one camera frame via sensor `trigSingleFrame()` and waits for NNPA `EVT_DATA_LOADED`.
+- SDK ISP HAL contains cropper, Bayer2RGB, RGB2GRAY and scaler controls. The own CNN expects 40x30x1 uint8 (1200 bytes), while sensor format is chosen as QQVGA (160x120) for requested image dims <=160x120. Need configure/validate ISP grayscale and 4x downscale / 40x30 PSB transfer, ensure tensor bytes/layout exactly match host preprocessing before running live inferences.
+- EvalboardTiny manual identifies camera FPC J1 for PAG7920J1 module and camera board connector J4 for Arducam daughter board. The current SDK camera auto-detection supports EIS316, HM0360 and PAG7920LT.
+
+### Next safe plan
+
+1. Confirm a supported camera module is physically attached to EvalboardTiny / correct connector. If yes, create and SRAM-run a camera-detection-only firmware first. This only enables sensor rail, calls `camera_init`, prints detected model and checks sensor presence; it does not load model or change flash.
+2. If camera detected, implement one-frame camera capture into ISP, grayscale + scale to 40x30, and verify camera-to-NNPA input buffer shape 1200 bytes. Start as single-frame SRAM-only test.
+3. Once one-frame input is validated, embed own NNPA model in SRAM application, call `get_image_to_nnpa()` for live frames, execute inference, print 1/2/3-person classification repeatedly at a conservative frame rate.
+4. The live result remains whole-frame person-count classification, not bounding boxes. Test with scenes captured live and compare to known visible counts; the 71-image offline evaluation does not prove live generalization.
+5. Do not program sector 0x20000 or permanent flash until live SRAM path passes. Current new NNPA is 19,392 bytes versus old flash prefix 14,224 bytes; original tail and current sector backups remain preserved.
+
+Open question for user: which camera module is physically connected now — PAG7920LT/PAG7920J1, HM0360, EIS316, Arducam daughter board, or no camera yet?
