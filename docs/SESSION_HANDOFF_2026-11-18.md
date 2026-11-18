@@ -408,3 +408,33 @@ User inspected the previous training report, source groups, and extracted direct
 ### Decision / next step
 
 For the professor's small-CNN proof-of-work, use the existing model only as an experimental candidate while clearly reporting the weak per-class validation. Do not retrain or overwrite the existing artifacts blindly. First inspect the SDK sample firmware that loads an NNPA bitstream into NNPA SRAM and performs one inference; determine the minimum firmware path for this exact `[1,30,40,1]` uint8 input and three logits. Board training is not supported by the NNPA; host training is required. Do not modify sector 0x20000 during this investigation.
+
+## SRAM-only own-count CNN board inference scaffold committed — 2026-11-18
+
+After inspecting SDK examples, a temporary SRAM-only inference app was added under `experiments/professor_demo/task2_small_cnn/`.
+
+Files:
+- `README.md` — host training vs board inference, SRAM-only run procedure and validation limitations.
+- `Makefile` — SDK build configuration for `EVBTINY`; explicit `prepare-data` step.
+- `generate_board_data.py` — embeds the verified NNPA bitstream and three selected own-dataset images into a generated C header.
+- `main.c` — initializes ColibryBoard, copies the embedded NNPA bytes directly into NNPA SRAM using CPU memory access, calls `check_nnpa_bitstream()` and `nnpa_allocate_buffers()`, loads 1200 bytes per image through the NNPA 8-bit input loader, triggers inference, and prints output shape/raw values/predicted class.
+- `.gitignore` — excludes generated `build/` C header.
+
+Verified design facts from SDK sources:
+- `ColibryBoard::copy_bitstream_to_mem()` copies from external flash to NNPAMEM via CPU memory access and 32-bit writes. The new app uses the same destination and CPU memory access pattern, but sources words from the embedded SRAM firmware image instead of external flash.
+- SDK `30_mlperf_vww` example uses `input_loader_cfg`, `INPUT_LOADER_RST_MASK`, `input_loader_data`, and `RUN_START_MASK` for 8-bit input loading and inference.
+- `NNPA_NBYTE_PER_MEM_WORD` is 16; the own CNN input tensor is 40x30x1 uint8 = 1200 bytes (expected 75 NNPA memory words).
+- `nnpa_hal.hpp` confirms `rd_ofmap_size.fields.ofmap_width`, `.ofmap_height`, `.ofmap_depth` are dimensions minus one.
+- Generator pins the exact own-count NNPA artifact size (19392 bytes) and SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e` before embedding it.
+- Three sample images selected from the existing train/validation set: `1_person/I1__008__120x160.png`, `2_person/I2__007__120x160.png`, `3_person/I3__004__120x160.png`. They use the same grayscale Lanczos 160x120 to 40x30 preprocessing as the Python trainer.
+- The app tests three logits in class order 1_person, 2_person, 3_person and prints raw uint8 logits. It compares the predicted class to the sample folder label; this is only a hardware execution test, not an accuracy claim.
+
+Important:
+- The scaffold is committed but is NOT yet syntax-checked by the local RISC-V toolchain, compiled, loaded into SRAM, or tested on hardware.
+- The app embeds the NNPA binary into its firmware image and does not need to program external flash. The documented run is `make all tosram board=EVBTINY`, after the manual's Wait Start sequence. Never use `toflash` or `make nnpa` for this test.
+- Preserve original sector backup and current sector backup. Sector 0x20000 remains unchanged.
+- The local repository must be updated from origin/main before building; ensure existing untracked dataset and model experiment directories remain untouched.
+
+### Next action
+
+Safely fast-forward the local working clone to current origin/main (first fetch and confirm local HEAD is ancestor and no untracked path collisions), then enter `experiments/professor_demo/task2_small_cnn/`, run `make prepare-data`, `make check-inputs`, and a build-only `make all board=EVBTINY`. Do not execute the `tosram` run until the build succeeds. After build success, prepare Wait Start mode and execute the SRAM test. Keep all flash files unchanged.
