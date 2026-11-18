@@ -300,3 +300,25 @@ Compare the original sector backup and cache-safe current sector image locally, 
 - Compare bytes 14224..65535 of current sector with the same range of original backup to verify preservation of the 51,312-byte tail.
 - Reconstruct in memory: old NNPA bytes + original backup[14224:] and verify this reconstructed sector SHA-256 equals efbdd2be348d78e98ee2f18168c36b8f2e3b94a354e6c28123242a3f4a5da00c.
 - Do not write or upload raw backups to GitHub; retain them locally and record only hashes/metadata.
+
+## Original sector reconstruction fully verified — 2026-11-18
+
+The user ran a local-file-only comparison between the recovered original 64 KiB sector backup, the corrected cache-safe current 64 KiB sector read, and the historical detector NNPA file.
+
+- Original sector: /home/nagaraju/Colibry-Smart-Video-Sensor-git/models/compiled/backup_flash_sector_0x20000.bin
+- Original size: 65536 bytes.
+- Original SHA-256: 5e83c69f45d5914a775ae940cade8353d5cdb4fa605005ba22932c736999f987 (exact historical match).
+- Current cache-safe sector: /home/nagaraju/models/edgeguard_own_count/flash_backups/flash_sector_0x20000_cache_safe_20261118.bin
+- Current size: 65536 bytes.
+- Current SHA-256: efbdd2be348d78e98ee2f18168c36b8f2e3b94a354e6c28123242a3f4a5da00c (exact historical replacement-sector match).
+- Historical detector NNPA: /home/nagaraju/Colibry-Smart-Video-Sensor-git/models/compiled/colibry_person_detector.nnpa
+- NNPA size: 14224 bytes.
+- NNPA SHA-256: fe9897ff4694328b22fb3fc91fba9097ca353a18365c197f196011ed14be9fd2 (exact historical compiled artifact match).
+- Current sector first 14,224 bytes exactly equal the historical detector NNPA.
+- Current sector bytes 14,224..65,535 (51,312 bytes) exactly equal the same range from the original backup.
+- Reconstructing historical NNPA + original backup tail produced SHA-256 efbdd2be348d78e98ee2f18168c36b8f2e3b94a354e6c28123242a3f4a5da00c and was byte-for-byte identical to the corrected cache-safe current-sector read.
+- User script ended with ALL ORIGINAL DATA AND TAIL CHECKS PASSED.
+
+Conclusion: the original 64 KiB sector data is recovered and verified locally; the current sector image is exactly the expected historical composition, with the previous detector NNPA replacing only the first 14,224 bytes while the original 51,312-byte tail is preserved. This does not mean the new own-count CNN has been flashed or that it is ready for deployment.
+
+No external flash write, erase, or programming operation was performed during recovery/verification. Preserve both original and current sector backup files. Do not flash the new CNN as part of this recovery task.
