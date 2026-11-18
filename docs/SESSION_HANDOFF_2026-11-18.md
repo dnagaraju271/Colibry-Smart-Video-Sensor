@@ -516,3 +516,16 @@ Do not use `make tosram` as written, because runtime.mk hardcodes `python3` and 
 Before the loader, configure `/dev/ttyUSB2` using `stty -F ... 115200 raw -echo` and start `cat /dev/ttyUSB2` into a build log. Check that the capture process remains alive, then run the SRAM loader. After it returns, capture several additional seconds, terminate only the local `cat` process, and print the log. The board app should output model configuration and three sample predictions. It pulses the user LED after model configuration, then leaves it off while it loops.
 
 No serial-terminal installation is needed. The direct SRAM loader writes only SRAM address 0x10000000 and starts the CPU; the inspected script contains no external flash write/erase path. The app itself embeds the NNPA bytes in its firmware image and copies them into NNPA SRAM. Do not use `toflash` or `make nnpa`.
+
+## SRAM loader and UART preflight — 2026-11-18
+
+User verified:
+- `~/colibry-flash-env/bin/python` has NumPy 2.5.4 and PyFtdi 0.57.2; JTAG modules import successfully.
+- System `python3` does not have PyFtdi. Therefore do not use the stock Makefile `tosram` target unchanged, because runtime.mk invokes system `python3`.
+- `/dev/ttyUSB2` exists as root:dialout, mode 660. Evaluation manual identifies this as the UART at 115200 baud.
+- No `picocom`, `minicom`, or `screen` executable is installed. UART capture can be performed using `stty` and `timeout cat` without installing anything.
+- SRAM application binary path: `experiments/professor_demo/task2_small_cnn/build/own_count_cnn_sram_demo.bin`, size about 49 KiB, SHA-256 `5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`.
+
+### Next step
+
+Capture UART output to a log before launching the SRAM loader directly with `~/colibry-flash-env/bin/python` and the JTAG port `ftdi://ftdi:4232hp:5:2/1`. This is equivalent to the SDK `tosram` command: `<binary> 0x10000000 --run`. Do not invoke `make toflash` or `make nnpa`. Expect existing firmware LED blink to stop while CPU is halted; the loaded CNN app performs test and then loops. A power cycle/normal boot returns to flash-resident firmware.
