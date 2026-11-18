@@ -467,3 +467,19 @@ The build output created both SRAM binary and flash-oriented variants (including
 ### Next safe step
 
 Inspect the SDK's exact `tosram` target recipe, linker memory layout, and the generated ELF/map section addresses/size before loading. Confirm image/stack/BSS fit the SRAM region. Do not program external flash. Once confirmed, use `make all tosram board=EVBTINY` following the Evaluation Kit Wait Start sequence, then observe UART `/dev/ttyUSB2` at 115200 baud. The SRAM test pauses/changes the currently running LED firmware until the board is reset or booted back into the prior program; make sure the user understands this. Keep the verified sector 0x20000 and original backup files untouched.
+
+## SRAM memory-layout inspection for own-count CNN firmware — 2026-11-18
+
+User inspected generated ELF `build/own_count_cnn_sram_demo/own_count_cnn_sram_demo`.
+
+- Linker SRAM region: ORIGIN 0x10000000, LENGTH 0x00020000 (128 KiB).
+- ELF section addresses: `.vectors` at 0x10000000; `.text` at 0x10000138; `.rodata` at 0x10005D50; `.bss` at 0x1000D000 size 0x348; `.stack` at 0x1000D348 size 0x2000.
+- The used region through stack top is approximately 0x1000F348, leaving about 0x10CB8 (68,792 bytes) below SRAM end 0x10020000.
+- `riscv32-corev-elf-size` reported total 62,276 bytes (0xF344), consistent with the ELF section sizes.
+- The user attempted `build/own_count_cnn_sram_demo.map`, but this file was not found there. The ELF section inspection nevertheless provides sufficient initial evidence for fit; no need to block on a map file.
+- Runtime makefile source showed `tosram` invokes `colibry-sramtool.py <TARGET_BUILD_DIR>/<TARGET_NAME>.bin 0x10000000 --run`, while `toflash` invokes flash tool at address 0x0. User has not run either target.
+- No SRAM load, physical inference, or flash write has occurred.
+
+### Next safety check
+
+Inspect `colibry-sramtool.py` source (the SRAM loader) and actual built `.bin` size/output path. Confirm it only writes the specified SRAM address and starts CPU, with no flash commands. Only after reviewing loader source should the SRAM test be run. The expected `.bin` is `build/own_count_cnn_sram_demo.bin` and is distinct from the ELF at `build/own_count_cnn_sram_demo/own_count_cnn_sram_demo`.
