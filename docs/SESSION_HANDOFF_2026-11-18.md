@@ -672,3 +672,24 @@ User compared the SRAM firmware binary rebuilt from `projects/own_dataset_person
 - Therefore no need to rerun or reload the board solely due to folder reorganization.
 - The first physical board inference results remain applicable to the new project path: all 3 NNPA calls completed, host and board argmax agreed for the three samples, but only 1/3 labels were correctly classified.
 - No flash operations occurred.
+
+## Clarification: host training, board evaluation, and persistent deployment — 2026-11-18
+
+The user asked whether the existing images can be used to train/test on the board and flash it for people detection.
+
+Confirmed distinctions:
+- The Colibry NNPA is an inference accelerator; train weights on the Ubuntu host using TensorFlow. Do not describe this as on-board training.
+- The 3-class CNN has been executed on the physical board using an SRAM-only test application and 3 static images. Host and board argmax decisions matched for all three, but only 1/3 labels matched. Raw uint8 outputs differed by <=11 levels.
+- A larger board evaluation using all 71 images is possible, but the current firmware embeds only 3 samples. Embedding all 71 at once would add 81,600 bytes of input payload; total SRAM binary could exceed the 128 KiB SRAM limit. Prefer batches of roughly 8-10 images per SRAM firmware build or implement host-to-board UART streaming if justified. Do not assume all 71 fit in one firmware.
+- Dataset has 59 1_person, 8 2_person, 4 3_person images; all 4 3_person images belong to one source group. The previous train/validation split leaked source groups. Full-dataset board evaluation would include images already used for training and should be reported as a dataset inference audit, not independent accuracy/generalization.
+- Current model is a whole-image count classifier with 3 outputs: `1_person`, `2_person`, `3_person`. It has no zero-person class, no >3 class and no bounding-box/localization output. It cannot yet be described as a general live person detector.
+- The current SRAM demo uses three static sample images embedded in the application; it does not capture live camera frames.
+- The existing external flash sector 0x20000 currently contains historical detector NNPA bytes (14,224 bytes) followed by original tail. The new own-count NNPA is 19,392 bytes. Replacing the persistent model requires a carefully reconstructed sector image and confirmed boot firmware/runtime that loads the new bitstream; persistent firmware also needs a camera capture/preprocessing/inference path for live detection.
+- Do not flash or erase sector 0x20000 yet. Original/current 64 KiB backups remain preserved.
+
+### Recommended next steps
+
+1. Improve dataset breadth, particularly independently captured 2_person and 3_person scenes; confirm/label the 3 pending zero-person originals separately before deciding whether to extend the class set.
+2. Review/adjust host model and evaluate with a source-group-aware protocol where feasible. With all 3_person examples in one group, independent 3_person generalization is not measurable until additional groups are collected.
+3. Run a batch-based board evaluation using SRAM-only firmware and compare board outputs with host INT8 TFLite. Use a small number of images per batch to remain within 128 KiB SRAM.
+4. Only after model behavior and camera inference runtime are verified should we consider a persistent flash deployment.
