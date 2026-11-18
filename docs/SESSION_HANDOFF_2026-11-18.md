@@ -79,3 +79,19 @@ Inspect the already-saved local backup file without reconnecting to the board:
 4. Compare any recognizable structures or embedded model signatures against the SDK's documented flash layout.
 
 Only use local-file read operations for this inspection. Do not read or write flash again until the local backup has been analyzed.
+
+
+## Local flash-backup content inspection — 2026-11-18
+
+The user inspected the saved 64 KiB backup locally (no board connection was used). Results:
+
+- SHA-256 reconfirmed: `8bf446e0ca7a095313b956001ea3046fa328380ce15fe6cc9106eaea104bbcb8`.
+- First 16 bytes at flash offset `0x20000`: `7B 3F 79 03 00 50 00 FF FF 0F C1 27 00 00 00 00`.
+- Final 4 bytes at `0x2FFFC`: `7C 7A 83 84`.
+- Entire 64 KiB sector contains 40,804 bytes of `0x00`, 24,482 bytes of `0xFF`, and 250 bytes of other values (76 unique byte values overall).
+- Only 8 printable strings of length at least 4 were detected; they look non-semantic/random in this basic scan.
+- This distribution is too sparse to identify the sector as a valid NNPA bitstream. It may represent real sparse contents or a read-path/transport issue; the existing binary/read routine must be checked before drawing conclusions.
+- No flash modification occurred.
+
+### Next diagnostic (local files only)
+Inspect contiguous non-`00`/`FF` ranges and 256-byte block patterns in the backup, compare the backup against the local CNN `.nnpa` file (if present), and inspect the exact `read_flash_array()` implementation used for the read. Do not perform another board read or any flash write until this offline validation explains the sparse pattern.
