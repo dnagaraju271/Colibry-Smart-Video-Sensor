@@ -199,7 +199,6 @@ static int capture_one_frame(void)
 
     scaler_info = isp.isp_scaler_psb_info_get();
 
-    printf("CAMERA_FRAME_CAPTURE: SUCCESS\n");
     printf("NNPA_DATA_LOADED: %lu bytes (%lu 16-byte words)\n",
            (unsigned long)(NNPA_reg->rd_input_size.word * 16u),
            (unsigned long)NNPA_reg->rd_input_size.word);
@@ -217,6 +216,19 @@ static int capture_one_frame(void)
     printf("NNPA_INPUT_LOADER_LEVEL: %lu\n",
            (unsigned long)NNPA_reg->input_loader_level.word);
 
+    if (psb_width(scaler_info) != CAMERA_INPUT_WIDTH ||
+        psb_height(scaler_info) != CAMERA_INPUT_HEIGHT ||
+        psb_channels(scaler_info) != 1u) {
+        printf("ERROR: ISP scaler did not receive a 160x120 single-channel frame.\n");
+        return 4;
+    }
+
+    if ((isp.regmap->isp_int_status.word & 0x1Fu) != 0u) {
+        printf("ERROR: ISP reported a processing/PSB error.\n");
+        return 5;
+    }
+
+    printf("CAMERA_FRAME_CAPTURE: SUCCESS\n");
     dump_frame_rows();
     NNPA_reg->nnpa_int_clear.word = EVT_DATA_LOADED_MASK;
     return 0;
