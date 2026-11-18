@@ -62,14 +62,6 @@ static void copy_model_to_nnpa_memory(void)
 static void configure_isp_for_pag7920_mono(void)
 {
     /*
-     * The SDK exposes ISP_SOFT_RESET as a write-pulse, but does not call it
-     * during board or ISP driver initialization. Reset the ISP sub-blocks
-     * once before configuring the pipeline. The ISP register-bank settings
-     * are documented as preserved by this reset.
-     */
-    printf("Resetting ISP sub-blocks before pipeline configuration...\\n");
-    colibryISP->isp_soft_reset();
-    colibrySCU->delay_ms(1u);
 
     /*
      * PAG7920LT is configured by the SDK in QQVGA mode (160x120).
@@ -297,6 +289,45 @@ static uint8_t read_model_input_pixel(uint32_t x, uint32_t y)
     return word[mem_col];
 }
 
+/*
+ * Read a bounded sample from the dedicated CPU-readable CAMIF Data FIFO.
+ * This FIFO is separate from the CAMIF-to-ISP stream and NNPA input memory.
+ * The diagnostic read does not modify the captured NNPA tensor.
+ */
+static void dump_camif_fifo_samples(void)
+{
+    const uint32_t available =
+        CAMIF_reg->camif_data_fifo_status.fields.data_fifo_word_nb;
+    const uint32_t sample_count = (available > 16u) ? 16u : available;
+    uint32_t min_value = 0xFFFFFFFFu;
+    uint32_t max_value = 0u;
+
+    printf("\n===== CAMIF RAW DATA FIFO SAMPLE =====\n");
+    printf("CAMIF_RAW_FIFO_WORDS_BEFORE_READ: %lu\n",
+           (unsigned long)available);
+
+    for (uint32_t i = 0u; i < sample_count; ++i) {
+        const uint32_t value =
+            CAMIF_reg->camif_cam_data.fields.cam_data;
+        if (value < min_value) min_value = value;
+        if (value > max_value) max_value = value;
+        printf("CAMIF_RAW_SAMPLE,%02lu,%03lx\n",
+               (unsigned long)i, (unsigned long)value);
+    }
+
+    if (sample_count != 0u) {
+        printf("CAMIF_RAW_SAMPLE_STATS,min=%lu,max=%lu\n",
+               (unsigned long)min_value,
+               (unsigned long)max_value);
+    } else {
+        printf("CAMIF_RAW_SAMPLE_STATS:no_words_available\n");
+    }
+
+    printf("CAMIF_RAW_FIFO_WORDS_AFTER_READ: %lu\n",
+           (unsigned long)CAMIF_reg->camif_data_fifo_status.fields.data_fifo_word_nb);
+    printf("===== END CAMIF RAW DATA FIFO SAMPLE =====\n");
+}
+
 static void dump_raw_input_memory(void)
 {
     const uint32_t start_word = NNPA_reg->input_start_maddr.word;
@@ -451,6 +482,7 @@ static int capture_one_frame(void)
      * to authorize inference.
      */
     print_pipeline_interrupt_flags();
+    dump_camif_fifo_samples();
     printf("FRAME_DUMP_NOTE: diagnostic input bytes; validity not yet established\n");
     dump_frame_rows();
     dump_raw_input_memory();
