@@ -31,6 +31,7 @@
 #define CAMERA_ONCHIP_MCLK      1u
 #define CAMERA_FPS              1u
 #define FRAME_TIMEOUT_MS        5000u
+#define FRAME_START_TIMEOUT_MS   5000u
 #define INFERENCE_TIMEOUT_MS    3000u
 #define CLASS_COUNT             3u
 
@@ -283,8 +284,42 @@ static int capture_one_frame(void)
     NNPA_reg->nnpa_control.fields.cpu_mem_access = 0u;
     print_pipeline_registers("BEFORE_TRIGGER");
 
-    printf("\nTriggering one PAG7920LT frame...\n");
+    /*
+     * Follow the SDK PAG7920LT trigger-mode handshake:
+     * configure the PCLK input, trigger one frame, then wait for
+     * the rising frame-start signal before waiting for NNPA data.
+     */
+    colibryPORT->dio_cfg_in_pd(CAM_PCLK_DIO);
+    printf("\nCAMERA_FRAME_START_PIN: CAM_PCLK_DIO configured as input\n");
+
+    printf("Triggering one PAG7920LT frame...\n");
     colibryBoard.cameraPAG7920LT.trigSingleFrame();
+
+    colibryPORT->dio_int_clear(CAM_PCLK_DIO);
+    colibryPORT->dio_int_rise_en_set(CAM_PCLK_DIO);
+
+    for (elapsed = 0u; elapsed < FRAME_START_TIMEOUT_MS; ++elapsed) {
+        if (colibryPORT->dio_in_val_get(CAM_PCLK_DIO) != 0u) {
+            break;
+        }
+        colibrySCU->delay_ms(1u);
+    }
+
+    colibryPORT->dio_int_rise_en_clear(CAM_PCLK_DIO);
+
+    if (elapsed >= FRAME_START_TIMEOUT_MS) {
+        NNPA_reg->nnpa_control.fields.cpu_mem_access = 1u;
+        printf("ERROR: PAG7920LT frame-start timeout on CAM_PCLK_DIO after %lu ms\\n",
+               (unsigned long)FRAME_START_TIMEOUT_MS);
+        print_pipeline_registers("FRAME_START_TIMEOUT");
+        print_pipeline_interrupt_flags();
+        return 6;
+    }
+
+    colibryBoard.cameraPAG7920LT.clearFrameStartIrq();
+    printf("CAMERA_FRAME_START: DETECTED on CAM_PCLK_DIO after %lu ms\\n",
+           (unsigned long)elapsed);
+    printf("Waiting for NNPA_DATA_LOADED...\\n");
 
     for (elapsed = 0u; elapsed < FRAME_TIMEOUT_MS; ++elapsed) {
         status = NNPA_reg->nnpa_int_status.word;
