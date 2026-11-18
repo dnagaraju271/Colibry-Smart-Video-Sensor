@@ -112,7 +112,7 @@ static int run_one_sample(uint32_t sample_index)
 
     output_start = NNPA_reg->ofmap_start_maddr.word;
     if (output_start == 0u) {
-        printf("ERROR: NNPA output start address is zero.\\n");
+        printf("ERROR: NNPA output start address is zero.\n");
         return 3;
     }
     output_size = NNPA_reg->rd_ofmap_size.word;
