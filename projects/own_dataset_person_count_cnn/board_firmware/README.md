@@ -1,108 +1,88 @@
-# Task 2 — Own-dataset two-trainable-layer CNN on Colibry
+# Colibry EvalboardTiny SRAM inference firmware
 
-This is an SRAM-only hardware inference demonstration for the compact CNN
-trained from the team's own grayscale dataset.
+This directory contains the board-specific firmware for testing the team's own 3-class CNN on the Colibry NNPA. The model is trained on the Ubuntu host; the NNPA executes inference only.
 
-## Important distinction
+## Firmware contents
 
-The Colibry NNPA is used to **run inference**. The model weights are trained on
-the Ubuntu host using TensorFlow. This firmware does not train or update
-weights.
+- `main.c` — embeds and copies the NNPA model into NNPA SRAM, loads three test images, runs inference and prints results over UART.
+- `generate_board_data.py` — verifies the NNPA artifact size/SHA-256 and creates a C header containing the NNPA words and three labelled input samples.
+- `Makefile` — compiles the firmware for `EVBTINY`.
 
-The host training and NNPA compilation have already been completed. The
-existing model has exactly two trainable layers (Conv2D and Dense), 14,443
-parameters, and a 40x30x1 grayscale input. Its validation results are weak:
-80% image-level accuracy, but zero recall for the 2-person and 3-person classes
-on the previous validation split. This firmware tests hardware execution;
-it is not a claim of reliable people counting.
+## Inputs
 
-## Flash preservation
+Three samples from the canonical dataset archive:
+- `1_person/I1__008__120x160.png`
+- `2_person/I2__007__120x160.png`
+- `3_person/I3__004__120x160.png`
 
-The NNPA bitstream and test inputs are generated into a C header and embedded
-inside the firmware image. At runtime, the firmware copies the model directly
-into NNPA SRAM and runs three input samples.
+Preprocessing: grayscale, Lanczos resize from 160x120 to 40x30, 1200 uint8 bytes per image.
 
-**Do not use \`toflash\`, \`nnpa\`, or the flash programming tool for this
-demonstration.** The documented \`tosram\` path loads and executes the firmware
-in volatile SRAM; the external flash sector at \`0x20000\` is not changed by
-this application.
-
-The existing original-sector and current-sector backups must remain untouched.
-
-## Required local files
-
-- SDK: \`~/colibryNPU_SDK\`
-- NNPA model:
-  \`~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite.nnpa\`
-- Dataset:
-  \`datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip\`
-- Python environment:
-  \`~/colibry-cnn-env\`
-
-The generator checks the exact expected NNPA size and SHA-256 before embedding
-it. It creates three test inputs using the same preprocessing as training:
-160x120 grayscale resized with Lanczos to 40x30.
-
-Samples:
-- \`1_person/I1__008__120x160.png\`
-- \`2_person/I2__007__120x160.png\`
-- \`3_person/I3__004__120x160.png\`
-
-## Prepare and build
+## Build
 
 From this directory:
 
-\`\`\`bash
+```bash
 make prepare-data
 make check-inputs
 make all board=EVBTINY
-\`\`\`
+```
 
-The build embeds the model and three input samples into the app. It does not
-program flash.
+The build completed on 2026-11-18. Generated firmware binary SHA-256:
+`5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`.
 
-## Run from SRAM
+## Run from SRAM only
 
-Follow the Evaluation Kit manual's **Wait Start** sequence:
-
-1. Press and hold \`PWR_OFF\` on the Colibry Probe.
-2. Press and hold the User Button on the EvalboardTiny.
-3. Release \`PWR_OFF\`.
+Use the Evaluation Kit manual's Wait Start sequence:
+1. Press and hold `PWR_OFF` on ColibryProbe.
+2. Press and hold the EvalboardTiny User Button.
+3. Release `PWR_OFF`.
 4. Release the User Button.
 
-Then run:
+UART console: `/dev/ttyUSB2`, 115200 baud. Configure and start capture before launching the loader:
 
-\`\`\`bash
-make all tosram board=EVBTINY
-\`\`\`
+```bash
+stty -F /dev/ttyUSB2 115200 raw -echo -ixon -ixoff cs8 -cstopb -parenb
+cat /dev/ttyUSB2 > build/uart_own_count_cnn.log &
+UART_PID=$!
+sleep 2
+```
 
-This is intentionally the SRAM load path. Do not substitute \`toflash\` or run
-\`make nnpa\`.
+In this Ubuntu VM, system `python3` lacks PyFtdi. Invoke the SDK SRAM loader with the flash environment's Python, which has PyFtdi 0.57.2:
 
-The UART console is \`/dev/ttyUSB2\` at 115200 baud per the Evaluation Kit
-manual. Observe the three predictions and the raw uint8 output values.
+```bash
+sudo "$HOME/colibry-flash-env/bin/python" \
+  "$HOME/colibryNPU_SDK/riscv_runtime/tools/bin_loader/colibry-sramtool.py" \
+  "$PWD/build/own_count_cnn_sram_demo.bin" \
+  0x10000000 --run \
+  -p "ftdi://ftdi:4232hp:5:2/1"
+```
 
-## Expected checks
+After allowing the app to finish, stop capture and inspect:
 
-The application prints:
-- NNPA bitstream CRC/configuration-check result;
-- model ID and input/data size registers;
-- input/output quantization registers;
-- raw output bytes and three class logits for each sample;
-- predicted class compared with the sample's folder label.
+```bash
+sleep 30
+kill "$UART_PID" 2>/dev/null || true
+wait "$UART_PID" 2>/dev/null || true
+cat build/uart_own_count_cnn.log
+```
 
-A model execution timeout, configuration failure, unexpected input size, or
-output shape other than three values is reported as a failure.
+**Do not use `toflash`, `make nnpa`, or the flash programming tool for this demonstration.** The SRAM loader writes the firmware to volatile SRAM at `0x10000000`; the app copies the embedded NNPA into NNPA SRAM. It does not access or modify external flash sector `0x20000`.
 
-The existing host-side confusion matrix showed that the old model predicted
-\`1_person\` for both validation examples from \`2_person\` and the sole validation
-example from \`3_person\`. A mismatch during board inference is therefore
-consistent with known weak host validation; it does not automatically mean
-NNPA execution failed.
+## Hardware test result — 2026-11-18
 
-## Scope
+The physical board successfully loaded the NNPA (model ID `0x723E`) and completed all three inference calls. Input size register was 75 x 16-byte words = 1200 bytes; output shape was `[1,1,3]`.
 
-This implements only the professor's small-CNN task. It uses three selected
-images from the existing own dataset, performs inference, and prints the
-classification results. It does not add camera capture, tracking, dashboards,
-or other features.
+| Sample | Expected | Board prediction |
+|---|---|---|
+| 1_person | 1_person | 1_person — match |
+| 2_person | 2_person | 1_person — mismatch |
+| 3_person | 3_person | 2_person — mismatch |
+
+Host INT8 TFLite and board predictions matched on the same three images. Raw uint8 outputs differed by at most 11 levels, so bit-exact output parity is not established. Only one of the three labels was classified correctly. This is a successful hardware execution demonstration, not a reliable people counter.
+
+After the app completes, it loops indefinitely and the LED remains off. A normal power cycle/boot returns to the flash-resident firmware. The external flash was not changed.
+
+## Known model limitation
+
+The dataset currently has 59 one-person, 8 two-person and 4 three-person samples. All four three-person images belong to one source group. The previous validation split leaks source groups, and recall was zero for the 2-person and 3-person validation examples. Collect more independent 2-person and 3-person images before retraining and claiming useful counting accuracy.
+
