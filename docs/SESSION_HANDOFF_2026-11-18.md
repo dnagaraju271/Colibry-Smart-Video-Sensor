@@ -936,3 +936,34 @@ No external flash modified.
 ### Next action
 
 Run batch 2 summarizer with `--expected-images 16 --start-index 32 --csv build/batch_02_results.csv`. Then build batch 3 using `BATCH_START=48 BATCH_SIZE=16`, inspect size <= 128 KiB, save output binary to `build/batches/batch_03.bin` and record SHA-256. Batch 3 is build-only until explicitly loaded with the SRAM loader.
+
+## Batch 2 summarized and batch 3 built/preserved — 2026-11-18
+
+User ran corrected summarizer for batch 2:
+- Expected global range 32..47.
+- Unique results 16/16; missing indices []; unexpected indices []; duplicate/malformed/missing-log errors 0.
+- Correct predictions 16/16 (100%). This batch contains only 1_person images (16 examples); it is not class-balanced.
+- CSV saved as `build/batch_02_results.csv`.
+
+User generated/build batch 3:
+- `BATCH_START=48`, `BATCH_SIZE=16`, global dataset indices 48..63.
+- All 16 samples are `1_person` per the archive manifest.
+- NNPA artifact verified by generator: 19,392 bytes, SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`.
+- C/C++ compile, link and objcopy succeeded.
+- ELF size: text 66,144, data 20, BSS 12,496, total 78,660 bytes (0x13344), within 128 KiB SRAM.
+- Preserved binary `build/batches/batch_03.bin` SHA-256 `63a3d2be8ba7ad23cd1525a7e75c05e82fce6fbd9ce924bbd0286a55d4fed2df`.
+- Batch 3 has been built and saved but NOT yet loaded onto physical board.
+- No external flash programming occurred.
+
+### Current board audit state
+
+- Batch 0 indices 0..15: 14/16 correct.
+- Batch 1 indices 16..31: 15/16 correct.
+- Batch 2 indices 32..47: 16/16 correct (all 1_person).
+- Cumulative through index 47: 45/48 correct (93.75%).
+- Batch 3 indices 48..63 awaits board run.
+- Batch 4 indices 64..70 (7 remaining images) awaits build and run.
+
+### Next action
+
+Load preserved `build/batches/batch_03.bin` to SRAM with the JTAG SRAM loader, capture UART at `/dev/ttyUSB2` into `build/batch_03_uart.log`, wait 45 seconds after loader exit, and verify 16 RESULT rows for global indices 48..63. Do not rebuild batch 3 until that binary has been run; then summarize with `--expected-images 16 --start-index 48` and CSV `build/batch_03_results.csv`. No flash operations.
