@@ -282,3 +282,21 @@ The user successfully ran the corrected cache-safe JTAG/SPIMF helper over the fu
 - Before deciding whether/how to replace the sector with the new CNN artifact, recover and verify the original pre-replacement sector tail and precise historical flash layout. Historical notes indicate the prior operation preserved a 51,312-byte tail, but the original sector backup hash is different and the original backup binary is not known to be present locally.
 - Do not overwrite the current sector until that original tail and replacement procedure are fully understood.
 - The current CNN NNPA file must not be flashed until a separate, safe, documented model/firmware loading path is established and the professor's requested simple CNN board inference workflow is prepared.
+
+## Original sector backup recovered locally — 2026-11-18
+
+The user searched existing backup files under ~/models, ~/Colibry-Smart-Video-Sensor-git, and ~/Colibry-Smart-Video-Sensor. An original 64 KiB sector backup was found:
+
+- Path: /home/nagaraju/Colibry-Smart-Video-Sensor-git/models/compiled/backup_flash_sector_0x20000.bin
+- Size: 65536 bytes.
+- SHA-256: 5e83c69f45d5914a775ae940cade8353d5cdb4fa605005ba22932c736999f987.
+- Exact hash match to historical original-sector backup hash.
+- This confirms the original sector backup is present locally. The 128 KiB historical inventory candidate was not listed in the current file search output; its current presence remains unconfirmed.
+
+### Next verification
+
+Compare the original sector backup and cache-safe current sector image locally, with no board access:
+- Compare current sector bytes 0..14223 to the historical old detector NNPA artifact (if its file is still present).
+- Compare bytes 14224..65535 of current sector with the same range of original backup to verify preservation of the 51,312-byte tail.
+- Reconstruct in memory: old NNPA bytes + original backup[14224:] and verify this reconstructed sector SHA-256 equals efbdd2be348d78e98ee2f18168c36b8f2e3b94a354e6c28123242a3f4a5da00c.
+- Do not write or upload raw backups to GitHub; retain them locally and record only hashes/metadata.
