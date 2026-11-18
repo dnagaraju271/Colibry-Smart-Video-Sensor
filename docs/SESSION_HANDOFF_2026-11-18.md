@@ -991,3 +991,33 @@ No external flash accessed or modified.
 ### Next action
 
 Run batch 3 summarizer with `--expected-images 16 --start-index 48` and CSV `build/batch_03_results.csv`. Then generate the final batch using `make prepare-data BATCH_START=64 BATCH_SIZE=16`; the generator should select only the seven remaining images (indices 64..70). Build, verify memory <=128KiB, preserve binary `build/batches/batch_04.bin` and SHA-256, then run on board via SRAM loader. After all seven rows are collected, aggregate logs from all five batches with expected-images 71 and start-index 0 to obtain the final confusion matrix.
+
+## Batch 3 summarized and final batch 4 built/preserved — 2026-11-18
+
+User ran the corrected summarizer for batch 3:
+- Expected index range 48..63.
+- Unique results 16/16; missing indices []; unexpected indices []; malformed/duplicate/missing-log errors 0.
+- Correct predictions 16/16. Batch 3 consists entirely of 1_person images; per-class accuracy for other classes is not measurable in this batch.
+- CSV saved as `build/batch_03_results.csv`.
+
+Final batch 4 generated and built:
+- Start index 64, batch size 16 requested; generator correctly selected remaining seven records, global dataset indices 64..70.
+- Files: `1_person/I1__053__120x160.png` through `1_person/I1__059__120x160.png`; all seven are 1_person.
+- NNPA model 19,392 bytes; verified SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`.
+- Build succeeded. ELF text 54,944 bytes, data 20 bytes, BSS 11,408 bytes, total 66,372 bytes (0x10344), within 128 KiB SRAM.
+- Preserved binary `build/batches/batch_04.bin` SHA-256 `c3b0b2c3ee8f53f53ed0324c55c777ae5a75af27c8afe7acffe0346e816d539b`.
+- Batch 4 is built and preserved but has NOT yet been loaded onto the physical board.
+- No external flash programmed.
+
+### Board audit progress before final batch
+
+- Batch 0 indices 0..15: 14/16.
+- Batch 1 indices 16..31: 15/16.
+- Batch 2 indices 32..47: 16/16.
+- Batch 3 indices 48..63: 16/16.
+- Cumulative indices 0..63: 61/64 (95.3125%).
+- Batch 4 covers indices 64..70 (7 one-person examples).
+
+### Next action
+
+Run batch 4 on the physical board using the checksum-verified `build/batches/batch_04.bin`, continuous UART capture at 115200 to `build/batch_04_uart.log`, expect 7 RESULT rows for global indices 64..70, and wait at least 30 seconds after loader exit. Verify loader exit 0 and result count 7. Summarize with `--expected-images 7 --start-index 64`. Then aggregate all logs `batch_00_uart.log` through `batch_04_uart.log` with `--expected-images 71 --start-index 0 --csv build/all_71_board_results.csv` for the final whole-dataset confusion matrix. This remains an audit on development/training images, not independent test accuracy. External flash untouched.
