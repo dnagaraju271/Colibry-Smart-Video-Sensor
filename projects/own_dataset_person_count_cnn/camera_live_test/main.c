@@ -290,16 +290,23 @@ static int capture_one_frame(void)
      * the rising frame-start signal before waiting for NNPA data.
      */
     colibryPORT->dio_cfg_in_pd(CAM_PCLK_DIO);
-    printf("\nCAMERA_FRAME_START_PIN: CAM_PCLK_DIO configured as input\n");
+
+    /*
+     * Arm the rising-edge interrupt BEFORE triggering the sensor.
+     * Clearing it after trigSingleFrame() could erase a fast frame-start
+     * edge. Wait on the latched interrupt status, not the instantaneous
+     * pin level, which may already be HIGH while the camera is idle.
+     */
+    colibryPORT->dio_int_clear(CAM_PCLK_DIO);
+    colibryPORT->dio_int_rise_en_set(CAM_PCLK_DIO);
+    printf("\nCAMERA_FRAME_START_PIN: CAM_PCLK_DIO configured; PCLK level before trigger=%u\n",
+           (unsigned int)colibryPORT->dio_in_val_get(CAM_PCLK_DIO));
 
     printf("Triggering one PAG7920LT frame...\n");
     colibryBoard.cameraPAG7920LT.trigSingleFrame();
 
-    colibryPORT->dio_int_clear(CAM_PCLK_DIO);
-    colibryPORT->dio_int_rise_en_set(CAM_PCLK_DIO);
-
     for (elapsed = 0u; elapsed < FRAME_START_TIMEOUT_MS; ++elapsed) {
-        if (colibryPORT->dio_in_val_get(CAM_PCLK_DIO) != 0u) {
+        if (colibryPORT->dio_int_status_get(CAM_PCLK_DIO) != 0u) {
             break;
         }
         colibrySCU->delay_ms(1u);
@@ -308,16 +315,20 @@ static int capture_one_frame(void)
     colibryPORT->dio_int_rise_en_clear(CAM_PCLK_DIO);
 
     if (elapsed >= FRAME_START_TIMEOUT_MS) {
+        colibryPORT->dio_int_clear(CAM_PCLK_DIO);
         NNPA_reg->nnpa_control.fields.cpu_mem_access = 1u;
-        printf("ERROR: PAG7920LT frame-start timeout on CAM_PCLK_DIO after %lu ms\n",
+        printf("ERROR: PAG7920LT frame-start interrupt timeout on CAM_PCLK_DIO after %lu ms\n",
                (unsigned long)FRAME_START_TIMEOUT_MS);
+        printf("CAMERA_PCLK_LEVEL_AT_TIMEOUT: %u\n",
+               (unsigned int)colibryPORT->dio_in_val_get(CAM_PCLK_DIO));
         print_pipeline_registers("FRAME_START_TIMEOUT");
         print_pipeline_interrupt_flags();
         return 6;
     }
 
+    colibryPORT->dio_int_clear(CAM_PCLK_DIO);
     colibryBoard.cameraPAG7920LT.clearFrameStartIrq();
-    printf("CAMERA_FRAME_START: DETECTED on CAM_PCLK_DIO after %lu ms\n",
+    printf("CAMERA_FRAME_START: RISING_EDGE_INTERRUPT after %lu ms\n",
            (unsigned long)elapsed);
     printf("Waiting for NNPA_DATA_LOADED...\n");
 
