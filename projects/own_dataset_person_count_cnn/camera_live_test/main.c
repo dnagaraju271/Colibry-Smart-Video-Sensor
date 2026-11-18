@@ -62,6 +62,16 @@ static void copy_model_to_nnpa_memory(void)
 static void configure_isp_for_pag7920_mono(void)
 {
     /*
+     * The SDK exposes ISP_SOFT_RESET as a write-pulse, but does not call it
+     * during board or ISP driver initialization. Reset the ISP sub-blocks
+     * once before configuring the pipeline. The ISP register-bank settings
+     * are documented as preserved by this reset.
+     */
+    printf("Resetting ISP sub-blocks before pipeline configuration...\\n");
+    colibryISP->isp_soft_reset();
+    colibrySCU->delay_ms(1u);
+
+    /*
      * PAG7920LT is configured by the SDK in QQVGA mode (160x120).
      * The sensor delivers a single RAW grayscale channel, so Bayer2RGB
      * and RGB2GRAY stay bypassed. Only the scaler is enabled.
