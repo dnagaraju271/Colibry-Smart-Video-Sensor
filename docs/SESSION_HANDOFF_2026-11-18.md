@@ -1139,3 +1139,48 @@ Camera probe built from `projects/own_dataset_person_count_cnn/camera_probe` wit
 ### Next action
 
 Start UART `/dev/ttyUSB2` at 115200; run continuous `cat` capture into `build/camera_probe_uart.log`; load only `build/colibry_camera_sensor_probe.bin` at address `0x10000000` via `colibry-sramtool.py` using `~/colibry-flash-env/bin/python`, JTAG `/1`. After loader returns, wait ~5 seconds, stop capture and inspect full UART log. Expected camera result is EIS316, HM0360 or PAG7920LT. If SDK prints no camera detected, stop and inspect physical module/connector/power; do not change CNN or flash. Do not load `_flash_boot.bin` or `_flash_copy.bin`.
+
+## PAG7920LT one-frame camera-to-NNPA test added — 2026-11-18
+
+The physical EvalboardTiny detected the PAG7920LT camera successfully using the preceding `camera_probe` firmware. UART confirmed:
+- `Camera PAG7920LT detected`.
+- `CAMERA_DETECTION_RESULT: PAG7920LT`.
+- `CAMERA_INITIALIZATION: SUCCESS`.
+- No frame capture/inference was done by the sensor detection probe.
+
+Inspected ASYGN SDK and Colibry product spec before adding a one-frame SRAM test:
+- PAG7920LT driver supports `trigSingleFrame()`; SDK `camera_init(160,120,1,1)` configures CAMIF RAW, 160x120, sensor QQVGA and camera clock/startup.
+- Product spec says CAMIF RAW is one channel, intended for grayscale or Bayer; ISP scaler supports one or three channels. The SDK path configures the PAG sensor to RAW mode. Live test uses RAW8 one-channel path, bypassing cropper, Bayer2RGB, RGB2GRAY and enabling scaler.
+- ISP scaler scaling is fixed point4.8; 160/40 and 120/30 gives 4.0 => 0x400 for X/Y, output dimensions explicitly set to 40x30.
+- The NNPA input model is unflattened 40x30x1 uint8, 1200 bytes. Product spec unflattened mapping for depth=1 pack_level=3 used for frame readback.
+- Product spec supports NNPA PSB input from ISP; CPU_MEM_ACCESS=0 while streaming, data-loaded event signals all expected model input data arrived. `EVT_ISP_SIZE_ERR` and `EVT_INPUT_LOADER_OVF` are checked.
+
+New GitHub project path `projects/own_dataset_person_count_cnn/camera_live_test/`:
+- `generate_nnpa_header.py`: verifies NNPA size 19,392 and SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`, writes little-endian C header.
+- `main.c`: initializes board, embeds NNPA into NNPA SRAM, verifies model ID/input size and IFMAP metadata (40x30x1, unflattened, pack_level3), powers sensor rail, camera_init 160x120, configures RAW8 and ISP scaler 4x to 40x30, triggers one PAG7920LT frame, waits with 5s timeout for NNPA EVT_DATA_LOADED, checks ISP scaler input PSB info (160x120x1) and ISP error flags, prints 30 rows of frame dump reconstructed from NNPA input memory, then runs one inference with timeout and prints class/logits. No flash API is called.
+- `Makefile`: App `own_count_camera_live`, model path `~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite.nnpa`, target EVBTINY; run `make prepare-model` followed by `make all board=EVBTINY`.
+- `decode_frame_log.py`: reconstructs UART `FRAME_ROW` records into 40x30 grayscale PNG.
+- `README.md`: build and SRAM run instructions, validation markers, prohibits `toflash` / `make nnpa`.
+
+Code revisions after initial commit added model IFMAP metadata validation and live frame input checks. Current main.c final relevant commit `9b6062a054efe0cbd8e02d954fce0dfa023e8a2b`.
+
+Important caveats:
+- The PAG7920LT live firmware has been committed but NOT yet pulled/built locally or tested on board. Do not say live inference succeeded yet.
+- The ISP scaler's resampling method may not exactly match the host training preprocessing (Pillow LANCZOS). The code prints a frame dump, decoder recreates it as PNG; inspect it before judging live-classification quality.
+- The firmware tests exactly one frame then loops. It is not continuous streaming yet.
+- This is whole-frame count classification only 1/2/3 people, no zero-person class, >3 class, or bounding boxes. Current model showed undercounts on two-person/three-person development images.
+- No external flash was accessed or programmed. Use `build/own_count_camera_live.bin` with SRAM loader only. Never load `_flash_boot.bin` or `_flash_copy.bin`.
+
+### Next user action
+
+Safely fast-forward Ubuntu `main` after fetch (preserve four untracked paths already present). Then in `projects/own_dataset_person_count_cnn/camera_live_test` run:
+
+```bash
+make prepare-model
+make all board=EVBTINY
+riscv32-corev-elf-size build/own_count_camera_live/own_count_camera_live
+ls -lh build/own_count_camera_live.bin
+sha256sum build/own_count_camera_live.bin
+```
+
+Build only, do NOT load yet. Inspect compiler/linker output and SRAM footprint. If build succeeds and fits in 128 KiB, then run with UART `/dev/ttyUSB2` and JTAG SRAM loader, capture log, decode 30-row PNG and inspect frame/metadata/error bits. No external flash writes.
