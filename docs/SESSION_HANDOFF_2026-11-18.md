@@ -661,3 +661,14 @@ User updated the Ubuntu working tree from origin/main successfully:
 ### Current next step
 
 The same source firmware had already passed physical board inference before reorganization; the new-location build compiles the same tracked main.c and generator. If a final artifact equivalence check is desired, compare the new `.bin` SHA-256 to the old binary SHA-256 `5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`. Because the build path changed, debug-path-dependent ELF details may differ, but the binary should be compared before claiming identical bytecode. Do not rerun the board unless needed. Preserve local untracked image/model files and flash backups.
+
+## Reorganized firmware binary identity confirmed — 2026-11-18
+
+User compared the SRAM firmware binary rebuilt from `projects/own_dataset_person_count_cnn/board_firmware/` to the previously board-tested binary.
+
+- New binary SHA-256: `5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`.
+- Previously tested binary SHA-256: `5d1fe38aca93bdda2c7fcd948d354b4cef22f1a704b8b30d5288d5631d150196`.
+- Result: EXACT MATCH. The newly organized project builds byte-identical firmware to the firmware that already ran successfully on the physical Colibry board.
+- Therefore no need to rerun or reload the board solely due to folder reorganization.
+- The first physical board inference results remain applicable to the new project path: all 3 NNPA calls completed, host and board argmax agreed for the three samples, but only 1/3 labels were correctly classified.
+- No flash operations occurred.
