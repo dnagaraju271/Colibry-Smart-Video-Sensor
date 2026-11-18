@@ -546,3 +546,31 @@ UART capture was started with `timeout 25s cat /dev/ttyUSB2`. Shell reported `[1
 ### Next action
 
 Retry the same SRAM-only load with a directly managed background `cat /dev/ttyUSB2` process (no 25 s timeout), start capture before invoking loader, wait after it returns, then stop only the cat process and inspect log. Reloading the same binary is safe for external flash; it reuses volatile SRAM and does not touch sector 0x20000. Continue not to run `toflash` or `make nnpa`.
+
+## First successful physical-board NNPA inference — 2026-11-18
+
+The user ran the SRAM-only CNN application. The SRAM loader returned exit code 0:
+- JTAG IDCODE 0x249511c3.
+- CPU halted, 49 KiB SRAM firmware copied, and loader printed Starting CPU.
+- UART was captured continuously at 115200 baud through /dev/ttyUSB2.
+- Firmware printed VDD=0.9V and own dataset CNN test banner.
+- Embedded model size 19,392 bytes; NNPA model ID 0x723E.
+- NNPA config-check routine printed `CRC_TRACE_PRE model=1212 status=0x00000106 int=0x00000007 trig=0x00000000 control=0x00000000 mask=0x00000002`, then `CRC_TRACE_POST status=0x00000105 int=0x00000007 trig=0x00000000 control=0x00000000 config_ok=0 event_end=1`, then reported `Bitstream loading: OK` and proceeded. Note the printed `config_ok=0` alongside success is internally inconsistent with a simple reading of the check code; investigate the volatile status register/read timing or log formatting before asserting exact CRC status value. Application proceeded to inference.
+- Input size register 75 NNPA 16-byte words, exactly 1200 bytes; input tensor [1,30,40,1] uint8.
+- Output start word 4096; output shape [1,1,3].
+- Output quantization metadata: output scaling register 0x00000625; output offset register 0x0000F100.
+
+Per-sample board raw outputs / argmax:
+- `1_person/I1__008__120x160.png`, expected 1_person: raw uint8 [224,133,46], predicted 1_person — match.
+- `2_person/I2__007__120x160.png`, expected 2_person: raw uint8 [223,166,26], predicted 1_person — mismatch.
+- `3_person/I3__004__120x160.png`, expected 3_person: raw uint8 [146,185,78], predicted 2_person — mismatch.
+- All three inference calls completed and app printed `ALL THREE NNPA INFERENCE CALLS COMPLETED`.
+- External flash was not accessed or modified by the app.
+
+Conclusion: first physical NNPA inference execution succeeded for three inputs and output shape. Only one of three sample labels matched. This is a hardware execution pass, not an accuracy pass. Do not state that the board people counter works reliably.
+
+### Required validation before further training/deployment decisions
+
+Compare these same 3 inputs and exact preprocessing (Pillow grayscale + Lanczos resize 160x120 to 40x30, uint8 input bytes) using the host INT8 TFLite file `~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite`. Print host raw uint8 outputs and argmax. Compare to board raw logits above. Previous image-level report matrix showed 3_person predicted as 1_person, whereas board produced 2_person on that exact named sample, so quantized host-vs-board parity must be established. If exact parity holds, proceed to data/model review; if not, inspect the NNPA output read/index/quantization and input pipeline before retraining.
+
+Board app finishes in an infinite loop, with user LED turned off after initial brief pulse. A normal power cycle/boot returns to flash-resident application; no flash writes were performed.
