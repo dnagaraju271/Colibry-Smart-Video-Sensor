@@ -1,46 +1,26 @@
 # Professor's basic board demonstrations
 
-This folder contains only the three demonstrations requested for the Colibry board assignment:
+This directory indexes the three demonstrations requested for the Colibry board assignment. Project implementation code is kept in its own project directory; this folder is the assignment overview.
 
-1. A simple C LED blinker.
-2. A very small CNN with exactly two trainable layers.
-3. Collection and organization of the team's own person-image dataset.
+## 1. Simple C LED blinker
 
-## 1. C LED blinker
+Implementation: [task1_c_blinker/](task1_c_blinker/).
 
-See task1_c_blinker/README.md for the C source and SDK Makefile.
+The physical board's red user LED has been observed blinking. The currently booted LED firmware's provenance has not been re-verified against this repository's `main.c`.
 
-The physical board's red user LED has been observed blinking. The current booted LED firmware's provenance has not been re-verified against this repository's main.c.
+## 2. Very small CNN with two trainable layers
 
-## 2. Small CNN — own data and board inference
+Implementation and host training: [Own-dataset person-count CNN project](../../projects/own_dataset_person_count_cnn/README.md).
 
-See task2_small_cnn/README.md.
+The CNN has two trainable layers (Conv2D and Dense), with Flatten between them. Training runs on the Ubuntu host; the Colibry NNPA executes inference. The SRAM-only board inference test completed on 2026-11-18.
 
-- Training is performed on the Ubuntu host using TensorFlow and the team's dataset.
-- Model architecture: Conv2D + Dense, with Flatten between them; exactly two trainable layers.
-- Input: 40 x 30 grayscale, one channel.
-- Output classes: 1_person, 2_person, 3_person.
-- The trained model has already been quantized to uint8 and compiled into an NNPA bitstream.
-- The SRAM-only test app embeds the NNPA bitstream in its firmware, copies it into NNPA SRAM, and tests one input from each class.
-- The SRAM test uses the SDK's tosram path and does not rewrite external flash sector 0x20000.
+Current model limitation: the board correctly classified 1 of the three selected sample images. Host INT8 TFLite and board class predictions agreed for all three, but two images were misclassified. The model is not a reliable people counter yet.
 
-The current experiment is not a reliable people counter yet. Its prior image-level validation accuracy was 80%, but recall was zero for the 2-person and 3-person validation examples. The dataset is small and imbalanced, and all four 3-person images come from one source group.
+## 3. Own outdoor image dataset
 
-## 3. Own dataset
+Dataset organization and collection notes: [task3_dataset/](task3_dataset/).
 
-Canonical archive:
+Canonical three-class dataset archive: `datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip`.
 
-datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip
+The current archive includes 59 one-person, 8 two-person and 4 three-person labelled images; three zero-person originals remain pending and excluded. All 4 three-person images come from one source group, so more independent examples are needed.
 
-Current labeled distribution:
-
-| Class | Images |
-|---|---:|
-| 1_person | 59 |
-| 2_person | 8 |
-| 3_person | 4 |
-| **Total** | **71** |
-
-Three zero-person originals remain in pending_for_later_originals and are not part of the current three-class model. The extracted datasets/mobile_160x120/processed/ directory is byte-for-byte the same 71 labeled images from the archive; it is not additional data.
-
-The class and source-group limitations are documented in the current session handoff at ../../docs/SESSION_HANDOFF_2026-11-18.md. More independently captured 2-person and 3-person examples are needed before claiming good generalization.
