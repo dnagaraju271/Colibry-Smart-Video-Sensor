@@ -880,3 +880,30 @@ Important: the full-dataset board audit uses the same 71 images used for prior t
 ### Next action
 
 Run `python3 summarize_batch_results.py build/batch_01_uart.log --expected-images 16 --csv build/batch_01_results.csv`, then build batch 2 with `BATCH_START=32 BATCH_SIZE=16`. Preserve the binary to `build/batches/batch_02.bin`, calculate/store its SHA-256, and confirm `riscv32-corev-elf-size` total <=128KiB before loading. Only proceed after batch 1 log summary has all 16 indices and zero errors.
+
+## Batch 1 summary-index issue identified; batch 2 build complete — 2026-11-18
+
+The user's uploaded log showed batch 1 summarizer output:
+- Unique results 16/16.
+- It incorrectly reported missing indices 0..15 and unexpected indices 16..31 because the summarizer assumed every invocation started at global index 0.
+- Batch 1 actual metrics remain valid from the 16 RESULT lines: 15/16 correct (93.75%), confusion matrix rows=true/columns=predicted: `[[12,0,0],[1,3,0],[0,0,0]]`.
+- The CSV `build/batch_01_results.csv` was written.
+
+Summarizer fixed in GitHub commit 95c2eb7e9f45c4ecac50470f1f0db7b48092e8ef:
+- New option `--start-index` defaults to 0.
+- Expected indices now equal `range(start_index, start_index + expected_images)`.
+- It prints the expected global range; invoke batch 1 as `--expected-images 16 --start-index 16`.
+- Batch 0 invocation remains `--expected-images 16 --start-index 0`.
+
+Batch 2 has been generated, built and preserved:
+- Start index 32, batch size 16, global dataset indices 32..47, all `1_person` according to manifest.
+- NNPA verified at 19,392 bytes and SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`.
+- Build size: text 66,144; data 20; BSS 12,496; total 78,660 bytes (0x13344), within 128 KiB SRAM.
+- Preserved firmware binary `build/batches/batch_02.bin` (relative to board_firmware) SHA-256 `e6cf895d6bcb4793e0e5f290dfbcc3a08055327e256e64991cbecee042d45366`.
+- Batch 2 is built and saved, not yet run on physical board.
+- Batch 0 binary hash `cd8a5fd4bb0fcb8210dd8d18cf024737214ad8ef28d9c7793d7e3613f80796c5`; batch 1 binary hash `2306e5b95f1a45bdb02aa72eed74b46230c9fda9f5a8f71b181a6dd152eb5fd5`.
+- No external flash modification.
+
+### Next action
+
+Pull only the summarizer fix from origin/main with a safe fast-forward check (confirm no conflicts with untracked local files). Re-run batch 1 summary with `--expected-images 16 --start-index 16 --csv build/batch_01_results.csv`; it should report no missing/unexpected indices. Then load `build/batches/batch_02.bin` to SRAM and capture 16 results for indices 32..47 into a unique UART log. No rebuild required for batch 2 binary; it was already built from firmware source that uses global dataset indices and generated expected class IDs. Do not run toflash or make nnpa.
