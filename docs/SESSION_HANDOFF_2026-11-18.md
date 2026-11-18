@@ -135,3 +135,20 @@ Need inspect `colibry_jtag_api.py` implementations of:
 - lower-level `read_dmi` and `write_dmi` used for system-bus access
 
 Do not reconnect to the board or reread flash while reviewing these software paths. No flash writes/erases have been performed.
+
+
+## Review of pasted JTAG/SPIMF exchange implementation — 2026-11-18
+
+The user supplied a source excerpt for `JtagSpimfInterface.exchange()` from `colibry-flashtool.py`:
+
+- SPIMF FIFO is configured as 16 bytes (`SPIMF_FIFO_NBYTES = 16`).
+- The method forms one TX byte stream containing the command header and read dummy bytes, converts it to big-endian 32-bit words, pads to a 4-byte boundary, and allocates an RX word array of corresponding size.
+- It asserts chip select, repeatedly pushes up to 16 bytes (four 32-bit words), and for reads pops one RX word per TX word. Finally it releases chip select and converts RX words back to bytes, discarding bytes corresponding to the TX command header.
+- For a READ transaction with a 4-byte header and a 4096-byte read, the total stream is 4100 bytes, word-aligned; the 16-byte FIFO loop handles 256 full chunks plus a final 4-byte chunk. No immediate array-length/word-rounding error is evident for the exact 4096-byte read used in backup.
+- The exchange loop writes the SPIMF length register with `nbyte_tx_next * 8 - 1` on partial/final chunks and then on the terminating zero-length loop iteration before breaking. This deserves consideration but is not by itself evidence that returned bytes are wrong.
+- The uploaded excerpt contains no implementation of `Colibry_jtag_api.mmap_read()` or `mmap_write()`; therefore the semantics of `push=False`, JTAG system-bus access, and RX FIFO read ordering remain unverified.
+- No new board access or flash modification occurred in this review.
+
+### Next step
+
+Read-only source inspection of `~/colibryNPU_SDK/riscv_runtime/tools/colibry_interfaces/colibry_jtag_api.py`, focusing on full `mmap_read()` and `mmap_write()` implementations and any queue/push behavior. Do not reconnect to the board until this code review is complete.
