@@ -609,3 +609,38 @@ Host vs board values:
 Conclusion: SRAM board execution and host INT8 TFLite class decisions agree for the three sampled inputs. Hardware path is confirmed functional at this limited sample level. Model quality remains inadequate for 2_person and 3_person. The current data contains only 8 two-person and 4 three-person examples, with all four three-person images belonging to a single source group. Collect more independent examples (especially 2_person and 3_person) before retraining and any robust counting claims.
 
 Board raw-output test did not modify external flash. The board app loops indefinitely after completing the three samples; a normal power cycle/boot returns to the flash-resident firmware.
+
+## Inference parity and GitHub project reorganization — 2026-11-18
+
+### Host vs board comparison
+
+On the same 3 images, host INT8 TFLite and Colibry NNPA produced matching class argmax predictions:
+- 1-person sample: host [213,126,43], board [224,133,46], both 1_person.
+- 2-person sample: host [212,157,25], board [223,166,26], both 1_person.
+- 3-person sample: host [138,176,74], board [146,185,78], both 2_person.
+- Raw uint8 outputs differed by max 11 levels; output quantization scale is 0.02400056459, hence max dequantized-scale difference about 0.264. Exact raw output parity is not established.
+- All three class decisions match. Only one of three true labels was correctly classified. Model quality is the limiting factor, not a mismatch in these three class decisions.
+
+### GitHub structure reorganized
+
+Own-dataset CNN code was separated from the professor assignment index. New structure:
+
+- `projects/own_dataset_person_count_cnn/README.md` — project overview, dataset/model status, hardware test status.
+- `projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py` — host training entry point. ROOT path updated to repository root; default output is `projects/own_dataset_person_count_cnn/models/host_experiment/`.
+- `projects/own_dataset_person_count_cnn/training/export_legacy_keras_for_colibry.py` — legacy tf_keras exporter. Default source points to the new project-local host experiment output; legacy H5 output remains `~/models/edgeguard_own_count/own_count_cnn_legacy.h5`.
+- `projects/own_dataset_person_count_cnn/training/README.md` — host training and compatibility export guide.
+- `projects/own_dataset_person_count_cnn/model_export/README.md` — PTQ TFLite and NNPA hashes/metadata.
+- `projects/own_dataset_person_count_cnn/board_firmware/` — `main.c`, `Makefile`, `generate_board_data.py`, `.gitignore`, and detailed README.
+- `experiments/professor_demo/README.md` is now an assignment index. Task 2 links to the dedicated project.
+- `simple_person_cnn/README.md` now clearly identifies that directory as the older separate binary person/no_person experiment. Own count CNN training scripts have moved out of it.
+
+Old paths deleted after destination files were created:
+- `experiments/professor_demo/task2_small_cnn/*`
+- `simple_person_cnn/train_own_count_cnn.py`
+- `simple_person_cnn/export_legacy_keras_for_colibry.py`
+
+GitHub operations only changed tracked repository files. The user's local untracked dataset images, local old model experiment outputs under `simple_person_cnn/model/own_count_experiment/`, external compiled models under `~/models/edgeguard_own_count/`, original flash backup, and current-sector backup were not modified by these GitHub operations.
+
+### Next local action
+
+Safely fetch origin/main and fast-forward the Ubuntu working tree after confirming it is an ancestor and that untracked paths do not conflict. Then verify the new trainer syntax/check-only and new board firmware build under `projects/own_dataset_person_count_cnn/board_firmware/`. Because previous board firmware was tested, do not immediately rerun loader; the board's SRAM-resident app may still be running. A normal power cycle returns to flash firmware; no external flash write is needed.
