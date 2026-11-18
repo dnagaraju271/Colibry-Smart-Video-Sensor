@@ -81,6 +81,91 @@ static void configure_isp_for_pag7920_mono(void)
     colibryISP->regmap->isp_int_clear.word = 0x3Fu;
 }
 
+/*
+ * Read back the PAG7920LT configuration written by the SDK.
+ * Only the register-bank selector is written; sensor image settings are
+ * read without modification. Expected values account for EVBTINY's
+ * horizontal-flip configuration in camera_init().
+ */
+static void dump_pag7920_register_bank(
+    uint8_t bank,
+    const uint8_t *addresses,
+    const uint8_t *expected,
+    uint32_t count)
+{
+    colibryBoard.cameraPAG7920LT.writeRegister(0xEFu, bank);
+    colibrySCU->delay_ms(1u);
+
+    for (uint32_t i = 0u; i < count; ++i) {
+        const uint8_t actual =
+            colibryBoard.cameraPAG7920LT.readRegister(addresses[i]);
+
+        printf("PAG7920LT_REG,bank=0x%02x,addr=0x%02x,expected=0x%02x,actual=0x%02x,match=%u\n",
+               (unsigned int)bank,
+               (unsigned int)addresses[i],
+               (unsigned int)expected[i],
+               (unsigned int)actual,
+               (unsigned int)(actual == expected[i]));
+    }
+}
+
+static void diagnose_pag7920_registers(void)
+{
+    static const uint8_t bank0_addresses[] = {
+        0x00u, 0x01u, 0x09u, 0x0Eu, 0x15u,
+        0x16u, 0x1Cu, 0x3Eu, 0xAFu
+    };
+    static const uint8_t bank0_expected[] = {
+        0x20u, 0x79u, 0x00u, 0x80u, 0x2Cu,
+        0x6Du, 0x02u, 0x04u, 0x31u
+    };
+
+    static const uint8_t bank1_addresses[] = {
+        0x4Bu, 0x70u, 0xC2u, 0xC3u, 0xC8u,
+        0xC9u, 0xCBu, 0xCCu, 0xCEu
+    };
+    /* camera_init() applies horizontal flip: bank 1 register C2 becomes 0. */
+    static const uint8_t bank1_expected[] = {
+        0x11u, 0x10u, 0x00u, 0x00u, 0x78u,
+        0x00u, 0x04u, 0x00u, 0x00u
+    };
+
+    static const uint8_t bank2_addresses[] = {
+        0x19u, 0x1Au, 0x23u, 0x24u, 0x27u,
+        0x28u, 0x2Du, 0x2Eu, 0xD9u
+    };
+    /* camera_init() applies horizontal flip: bank 2 register D9 becomes 2. */
+    static const uint8_t bank2_expected[] = {
+        0x81u, 0x00u, 0x78u, 0x00u, 0x09u,
+        0x00u, 0x78u, 0x00u, 0x02u
+    };
+
+    static const uint8_t bank4_addresses[] = {0x3Au, 0x3Bu};
+    static const uint8_t bank4_expected[] = {0x28u, 0x1Eu};
+
+    printf("\n===== PAG7920LT SENSOR REGISTER READBACK =====\n");
+    printf("PAG7920LT_REGISTER_CHECK: values compared with SDK init and EVBTINY flip settings\n");
+
+    dump_pag7920_register_bank(
+        0u, bank0_addresses, bank0_expected,
+        sizeof(bank0_addresses) / sizeof(bank0_addresses[0]));
+    dump_pag7920_register_bank(
+        1u, bank1_addresses, bank1_expected,
+        sizeof(bank1_addresses) / sizeof(bank1_addresses[0]));
+    dump_pag7920_register_bank(
+        2u, bank2_addresses, bank2_expected,
+        sizeof(bank2_addresses) / sizeof(bank2_addresses[0]));
+    dump_pag7920_register_bank(
+        4u, bank4_addresses, bank4_expected,
+        sizeof(bank4_addresses) / sizeof(bank4_addresses[0]));
+
+    /* Leave the sensor on the default register bank, as SDK init does. */
+    colibryBoard.cameraPAG7920LT.writeRegister(0xEFu, 0u);
+    colibrySCU->delay_ms(1u);
+    printf("PAG7920LT_REGISTER_BANK_RESTORED: 0\n");
+    printf("===== END PAG7920LT SENSOR REGISTER READBACK =====\n");
+}
+
 static uint32_t psb_width(uint32_t info)
 {
     return (info & 0x7FFu) + 1u;
@@ -523,6 +608,8 @@ int main(void)
                (unsigned int)colibryBoard.camera_model);
         return 3;
     }
+
+    diagnose_pag7920_registers();
 
     /* SDK camera_init configures RAW mode; sensor output is 8-bit. */
     CAMIF_reg->camif_protocol_cfg.fields.pixel_in_width = 8u;
