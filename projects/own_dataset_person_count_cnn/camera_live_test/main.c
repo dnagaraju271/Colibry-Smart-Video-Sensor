@@ -320,14 +320,14 @@ static void configure_camif_pattern_generator(void)
     CAMIF_reg->camif_patgen_ramp_init.fields.patgen_ramp_init2 = 0u;
 
     colibrySCU->delay_ms(1u);
-    printf("CAMIF_PATTERN_TEST: enabled\\n");
-    printf("CAMIF_PATTERN_CFG: 0x%08lx\\n",
+    printf("CAMIF_PATTERN_TEST: enabled\n");
+    printf("CAMIF_PATTERN_CFG: 0x%08lx\n",
            (unsigned long)CAMIF_reg->camif_patgen_cfg.word);
-    printf("CAMIF_PATTERN_RAMP_INIT: 0x%08lx\\n",
+    printf("CAMIF_PATTERN_RAMP_INIT: 0x%08lx\n",
            (unsigned long)CAMIF_reg->camif_patgen_ramp_init.word);
-    printf("CAMIF_PATTERN_MUX: %lu\\n",
+    printf("CAMIF_PATTERN_MUX: %lu\n",
            (unsigned long)CAMIF_reg->camif_patgen_cfg.fields.patgen_mux_sel);
-    printf("CAMIF_PATTERN_CHANNELS: %lu\\n",
+    printf("CAMIF_PATTERN_CHANNELS: %lu\n",
            (unsigned long)CAMIF_reg->camif_patgen_cfg.fields.patgen_img_nchan);
 }
 
@@ -722,8 +722,8 @@ int main(void)
     }
 
 #if CAMIF_PATTERN_TEST
-    printf("PATGEN_TEST_COMPLETE: frame accepted by ISP/NNPA input path; inference skipped\\n");
-    printf("SYNTHETIC_INPUT: not a real camera scene\\n");
+    printf("PATGEN_TEST_COMPLETE: frame accepted by ISP/NNPA input path; inference skipped\n");
+    printf("SYNTHETIC_INPUT: not a real camera scene\n");
     return 0;
 #endif
 
