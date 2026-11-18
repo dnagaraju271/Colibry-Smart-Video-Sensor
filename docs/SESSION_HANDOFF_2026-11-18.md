@@ -167,3 +167,32 @@ The user supplied `mmap_read()` and `mmap_write()` implementations:
 ### Next step — source-only inspection
 
 Read the exact bodies of `read_dmi()` and `write_dmi()` (around lines 160–222 in `colibry_jtag_api.py`). Do not reconnect to the board or perform any flash operation until DMI read/write behavior is understood.
+
+
+## Confirmed SDK JTAG address-cache defect and safe reader helper — 2026-11-18
+
+The source inspection identifies a concrete defect in the SDK's `JtagSpimfInterface.exchange()` + `Colibry_jtag_api.mmap_read()/mmap_write()` interaction:
+
+- `mmap_write(addr, ...)` caches its last requested system-bus address in `self_curr_mmap_waddr` and only writes DMI `sbaddress0` when the requested address differs from the cached value.
+- `mmap_read(addr)` always writes `sbaddress0` to its requested address, e.g. SPIMF RX_POP (0x2001501C), but does not update/invalidate `self_curr_mmap_waddr`.
+- During each full 16-byte SPIMF FIFO chunk, `exchange()` pushes TX words to TX_PUSH (0x20015018), then reads RX words from RX_POP (0x2001501C). For following full chunks, the loop does not rewrite SPIMF_LEN_ADDR; it calls `mmap_write(TX_PUSH_ADDR, ...)` directly.
+- Because the cached value still says TX_PUSH while the actual system-bus address was changed to RX_POP by the last read, `mmap_write(TX_PUSH_ADDR, ...)` can incorrectly skip setting `sbaddress0` and push data into RX_POP rather than TX_PUSH.
+- This explains why long/multi-FIFO read transactions can return invalid data after the first FIFO chunk. The earlier sector backup must be treated as forensic/untrusted, not as an accurate flash image.
+- `read_dmi()` uses a READ request followed by a NOP and then captures the response; `write_dmi()` sends a WRITE request. Nothing in the pasted methods removes the confirmed stale system-bus address cache defect.
+- No flash modification has occurred.
+
+### Cache-safe reader helper committed
+
+Added `scripts/board/read_flash_sector_jtag_cache_safe.py` to `main` (latest helper commit: `6388d3cd573ff42cf9174e0dfef812c51a6c6a90`).
+
+The helper:
+- Wraps `mmap_read()` and sets `self_curr_mmap_waddr = None` after every RX FIFO read, forcing the next `mmap_write()` to restore its requested system-bus address.
+- Reads using 256-byte top-level flash transactions to keep per-transaction scope controlled.
+- Calls only JEDEC READ ID (0x9F) and flash-array READ (0x03).
+- Does not call flash write, register-write, erase, check-only, or programming methods.
+- In its finally block attempts `cpu_restart()` using boot address `0x10000000`. It reports a failure and does not report a successful exit if CPU restart fails.
+- Has been committed but is not yet locally pulled, syntax-checked, or tested on the hardware.
+
+### Next action
+
+User must pull the updated `main` and run `python -m py_compile` locally first. Only after syntax validation should the cache-safe helper be run using explicit `--sdk-root` and `--output` paths (because `sudo` changes `Path.home()`). The helper will halt CPU while initializing SPIMF and restart it at cleanup; expect the LED to pause temporarily. After the corrected read, compare sector checksum, block patterns, and embedded NNPA signature. Do not flash/program anything yet.
