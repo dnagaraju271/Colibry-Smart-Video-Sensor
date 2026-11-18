@@ -70,3 +70,12 @@ Open `build/live_camera_frame.png` to visually inspect the exact tensor sent to 
 
 The predicted class should be compared to the actual scene. The current model has no 0-person or >3-person class and has known undercount errors. This is a first live engineering test, not a claim of reliable real-world detection.
 
+
+## Engineering diagnostics and reference notes
+
+The maintained diagnostic notebook is in [`docs/`](docs/README.md):
+
+- [ISP register and signal reference](docs/isp-register-reference.md)
+- [PAG7920LT capture investigation — 2026-11-18](docs/capture-investigation-2026-11-18.md)
+
+These records separate measured evidence from hypotheses and preserve the current known failure state. Update them when new UART logs, SDK findings, or controlled tests become available. Do not treat the current camera test as passing until the scaler PSB error is resolved and the decoded image is validated.
