@@ -10,6 +10,8 @@ This SRAM-only test initializes the confirmed PAG7920LT camera, scales a frame t
 - ISP: cropper bypass; Bayer2RGB bypass; RGB2GRAY bypass (monochrome sensor); scaler enabled.
 - Scaler input: 160x120x1; scaler output: 40x30x1 with exact 4x X/Y scaling (`0x400` 4.8 fixed point).
 - NNPA input: `[1,30,40,1]` uint8, 1200 bytes.
+- Firmware validates the NNPA input metadata: width 40, height 30, depth 1, unflattened, packing level 3.
+- After a frame arrives, it validates ISP scaler input metadata is 160x120 with one channel and checks ISP PSB error flags before using the frame.
 
 The Colibry product specification documents CAMIF-to-ISP Pixel Streaming Bus, monochrome RAW mode, ISP scaler configuration and PSB transfer to the NNPA input loader.
 
@@ -49,7 +51,7 @@ Do not use `toflash`, `make nnpa`, `_flash_boot.bin` or `_flash_copy.bin`. The a
 
 ## Captured frame dump
 
-The firmware emits 30 `FRAME_ROW,yy,<80 hex chars>` lines representing the 40x30 grayscale tensor reconstructed from the NNPA input memory layout. Decode it on Ubuntu:
+The firmware emits 30 `FRAME_ROW,yy,<80 hex chars>` lines representing the 40x30 grayscale tensor reconstructed from the NNPA input memory layout. The mapping is checked against the model's IFMAP metadata before reading. Decode it on Ubuntu:
 
 ```bash
 python3 decode_frame_log.py build/live_camera_uart.log --output build/live_camera_frame.png
