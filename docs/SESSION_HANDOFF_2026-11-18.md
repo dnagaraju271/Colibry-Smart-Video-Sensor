@@ -967,3 +967,27 @@ User generated/build batch 3:
 ### Next action
 
 Load preserved `build/batches/batch_03.bin` to SRAM with the JTAG SRAM loader, capture UART at `/dev/ttyUSB2` into `build/batch_03_uart.log`, wait 45 seconds after loader exit, and verify 16 RESULT rows for global indices 48..63. Do not rebuild batch 3 until that binary has been run; then summarize with `--expected-images 16 --start-index 48` and CSV `build/batch_03_results.csv`. No flash operations.
+
+## Physical board inference — batch 3 / dataset indices 48-63 — 2026-11-18
+
+User loaded preserved `build/batches/batch_03.bin` using the JTAG SRAM loader:
+- Loader exit code 0; UART result count 16; firmware printed `ALL 16 NNPA INFERENCE CALLS COMPLETED`.
+- All indices 48..63 were `1_person`, and all predicted `1_person`.
+- Batch 3: 16/16 correct (100% within an all-one-person batch).
+- Raw output logits by global index: 48 [225,138,81]; 49 [255,97,55]; 50 [246,136,66]; 51 [200,155,92]; 52 [242,112,90]; 53 [226,141,87]; 54 [215,158,81]; 55 [227,132,89]; 56 [247,135,39]; 57 [234,129,83]; 58 [225,133,88]; 59 [251,138,64]; 60 [233,145,70]; 61 [201,168,94]; 62 [215,162,91]; 63 [237,140,84].
+
+Cumulative physical board inference for global indices 0..63:
+- 64 results, 61 correct = 95.3125%.
+- Class supports: 1_person=52, 2_person=8, 3_person=4.
+- Confusion matrix rows=true, columns=predicted, class order [1_person,2_person,3_person]: `[[52,0,0],[2,6,0],[0,1,3]]`.
+- Recall: 1_person 100%; 2_person 75%; 3_person 75%.
+- All three observed errors are undercounts: two 2_person -> 1_person; one 3_person -> 2_person.
+- This audit uses the existing development/training images and is not an independent generalization test. Batches 2 and 3 each consist entirely of 1_person images, so their 100% values are only within-class checks.
+
+Batch 3 preserved binary: `build/batches/batch_03.bin`; SHA-256 `63a3d2be8ba7ad23cd1525a7e75c05e82fce6fbd9ce924bbd0286a55d4fed2df`. UART log: `build/batch_03_uart.log`.
+
+No external flash accessed or modified.
+
+### Next action
+
+Run batch 3 summarizer with `--expected-images 16 --start-index 48` and CSV `build/batch_03_results.csv`. Then generate the final batch using `make prepare-data BATCH_START=64 BATCH_SIZE=16`; the generator should select only the seven remaining images (indices 64..70). Build, verify memory <=128KiB, preserve binary `build/batches/batch_04.bin` and SHA-256, then run on board via SRAM loader. After all seven rows are collected, aggregate logs from all five batches with expected-images 71 and start-index 0 to obtain the final confusion matrix.
