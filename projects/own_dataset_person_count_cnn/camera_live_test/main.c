@@ -294,6 +294,11 @@ int main(void)
 {
     board_init_cfg_t board_init_cfg = {};
     uint32_t input_bytes;
+    uint32_t ifmap_width;
+    uint32_t ifmap_height;
+    uint32_t ifmap_depth;
+    uint32_t ifmap_flattened;
+    uint32_t ifmap_pack_level;
     int result;
 
     COLIBRY_DRIVERS_INIT();
@@ -326,11 +331,29 @@ int main(void)
     colibryBoard.nnpa_allocate_buffers();
 
     input_bytes = NNPA_reg->rd_input_size.word * NNPA_NBYTE_PER_MEM_WORD;
+    ifmap_width = NNPA_reg->rd_ifmap_size.fields.ifmap_width + 1u;
+    ifmap_height = NNPA_reg->rd_ifmap_size.fields.ifmap_height + 1u;
+    ifmap_depth = NNPA_reg->rd_ifmap_size.fields.ifmap_depth + 1u;
+    ifmap_flattened = NNPA_reg->rd_ifmap_info.fields.ifmap_flattened;
+    ifmap_pack_level = NNPA_reg->rd_ifmap_info.fields.ifmap_pack_level;
+
     printf("NNPA model ID: 0x%08lx\n",
            (unsigned long)NNPA_reg->rd_model_id.word);
     printf("NNPA input bytes: %lu\n", (unsigned long)input_bytes);
-    if (input_bytes != MODEL_INPUT_BYTES) {
-        printf("ERROR: model input is not 40x30x1 uint8.\n");
+    printf("NNPA IFMAP: %lu x %lu x %lu, flattened=%lu, pack_level=%lu\n",
+           (unsigned long)ifmap_width,
+           (unsigned long)ifmap_height,
+           (unsigned long)ifmap_depth,
+           (unsigned long)ifmap_flattened,
+           (unsigned long)ifmap_pack_level);
+
+    if (input_bytes != MODEL_INPUT_BYTES ||
+        ifmap_width != MODEL_INPUT_WIDTH ||
+        ifmap_height != MODEL_INPUT_HEIGHT ||
+        ifmap_depth != 1u ||
+        ifmap_flattened != 0u ||
+        ifmap_pack_level != 3u) {
+        printf("ERROR: NNPA input metadata does not match 40x30x1 unpacked uint8 mapping.\n");
         return 2;
     }
 
