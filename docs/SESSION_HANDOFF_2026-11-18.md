@@ -588,3 +588,24 @@ User ran the host TFLite comparison diagnostic. The correct PTQ TFLite artifact 
 ### Correct next step
 
 Rerun host comparison using `tensor = image[np.newaxis, ..., np.newaxis]` for this model, since uint8 quantization scale is exactly 1/255 and zero point 0, so grayscale bytes can be passed unchanged. Compare output uint8 triplets / argmax to the board values `[224,133,46]`, `[223,166,26]`, `[146,185,78]` for the same exact filenames and Pillow Lanczos preprocessing. Do not change or retrain model yet; no new board operation required.
+
+## Host INT8 TFLite versus physical NNPA output comparison — 2026-11-18
+
+The user ran host TFLite inference on the same three images used by the SRAM board test, using Pillow grayscale + Lanczos resize to 40x30 and uint8 NHWC input [1,30,40,1].
+
+Host model verification:
+- PTQ TFLite size: 17,312 bytes.
+- SHA-256: `df8d84655a0c1142aa556120920587ce256f26bd14a0c0c5a8c598bfbfe9a45a`.
+- Input uint8 quantization: scale 0.003921568859368563 (~1/255), zero point 0.
+- Output uint8 quantization: scale 0.024000564590096474, zero point 241.
+
+Host vs board values:
+- 1_person sample: host [213,126,43], board [224,133,46]. Absolute differences [11,7,3]. Both predict 1_person.
+- 2_person sample: host [212,157,25], board [223,166,26]. Absolute differences [11,9,1]. Both predict 1_person (mismatch to expected 2_person).
+- 3_person sample: host [138,176,74], board [146,185,78]. Absolute differences [8,9,4]. Both predict 2_person (mismatch to expected 3_person).
+- All three class argmax predictions agree host vs board. Maximum raw uint8 difference is 11 output levels, equivalent to about 0.264 after multiplying by the output scale 0.02400056.
+- Raw outputs are not bit-exact. The data supports class-decision agreement on these three inputs and modest numerical differences, but this is not a full numerical parity guarantee or accuracy validation.
+
+Conclusion: SRAM board execution and host INT8 TFLite class decisions agree for the three sampled inputs. Hardware path is confirmed functional at this limited sample level. Model quality remains inadequate for 2_person and 3_person. The current data contains only 8 two-person and 4 three-person examples, with all four three-person images belonging to a single source group. Collect more independent examples (especially 2_person and 3_person) before retraining and any robust counting claims.
+
+Board raw-output test did not modify external flash. The board app loops indefinitely after completing the three samples; a normal power cycle/boot returns to the flash-resident firmware.
