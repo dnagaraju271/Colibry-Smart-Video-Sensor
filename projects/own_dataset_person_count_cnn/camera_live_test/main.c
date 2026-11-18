@@ -32,7 +32,7 @@
 #define CAMERA_FPS              1u
 
 /* Set to 0 to restore the physical PAG7920LT single-frame trigger. */
-#define CAMIF_PATTERN_TEST      1u
+#define CAMIF_PATTERN_TEST      0u
 #define FRAME_TIMEOUT_MS        5000u
 #define FRAME_START_TIMEOUT_MS   5000u
 #define INFERENCE_TIMEOUT_MS    3000u
