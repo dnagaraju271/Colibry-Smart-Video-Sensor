@@ -438,3 +438,32 @@ Important:
 ### Next action
 
 Safely fast-forward the local working clone to current origin/main (first fetch and confirm local HEAD is ancestor and no untracked path collisions), then enter `experiments/professor_demo/task2_small_cnn/`, run `make prepare-data`, `make check-inputs`, and a build-only `make all board=EVBTINY`. Do not execute the `tosram` run until the build succeeds. After build success, prepare Wait Start mode and execute the SRAM test. Keep all flash files unchanged.
+
+## Own-count CNN firmware build completed — 2026-11-18
+
+User updated local repository from origin/main (1c32346 -> 494e950) using a fast-forward. Local untracked paths remained present and untouched:
+- `datasets/mobile_160x120/processed/`
+- `main`
+- `simple_person_cnn/model/own_count_experiment/`
+
+`python3 -m py_compile experiments/professor_demo/task2_small_cnn/generate_board_data.py` passed.
+
+`make prepare-data` completed successfully. Generated `build/own_count_board_data.h` using:
+- Verified NNPA file `~/models/edgeguard_own_count/ptq/own_count_cnn_uint8.tflite.nnpa`, 19,392 bytes, SHA-256 `ee9940c9edb9c66a75b4c005b9eb264a1732bf3428404c958a6f864cc156080e`.
+- Dataset archive `datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip`.
+- Input shape `[30,40,1]` uint8; 1200 bytes each.
+- Three samples: `1_person/I1__008__120x160.png`, `2_person/I2__007__120x160.png`, `3_person/I3__004__120x160.png`.
+
+`make check-inputs` passed.
+
+`make all board=EVBTINY` completed successfully: C and C++ compilation, link, objcopy and flash-image generation succeeded. Reported ELF size:
+- text 49,744 bytes
+- data 20 bytes
+- bss 12,512 bytes
+- total reported 62,276 bytes (0xF344).
+
+The build output created both SRAM binary and flash-oriented variants (including `own_count_cnn_sram_demo.bin`, `_flash_boot.bin`, `_flash_copy.bin`). These are build artifacts only; user did not run `tosram`, `toflash`, `make nnpa`, or any flash operation. No physical-board inference has yet been performed.
+
+### Next safe step
+
+Inspect the SDK's exact `tosram` target recipe, linker memory layout, and the generated ELF/map section addresses/size before loading. Confirm image/stack/BSS fit the SRAM region. Do not program external flash. Once confirmed, use `make all tosram board=EVBTINY` following the Evaluation Kit Wait Start sequence, then observe UART `/dev/ttyUSB2` at 115200 baud. The SRAM test pauses/changes the currently running LED firmware until the board is reset or booted back into the prior program; make sure the user understands this. Keep the verified sector 0x20000 and original backup files untouched.
