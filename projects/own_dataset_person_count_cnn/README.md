@@ -128,3 +128,9 @@ The model requires 40x30 grayscale uint8 input (1200 bytes). The EvalboardTiny c
 Current static-image batch firmware does not do live capture. Next work, pending confirmation of a connected supported camera module: first build an SRAM-only sensor-detection test; then a one-frame capture and ISP-to-40x30 verification; then integrate NNPA and continuously classify incoming frames. The output is a whole-image class (1/2/3 people), not bounding boxes, and there is no zero-person class.
 
 Do not permanently flash the model yet; sector 0x20000 contains the prior detector bitstream and preserved original tail. Keep both flash backups intact until live SRAM inference is proven and a safe flash layout is established.
+
+## Camera bring-up entry point
+
+A minimal SRAM-only sensor detection probe is available at `camera_probe/`. It powers the sensor rail and invokes the ASYGN SDK auto-detection for EIS316, HM0360 and PAG7920LT. Build and SRAM-run it before implementing frame capture. No NNPA inference or flash operation occurs in this probe.
+
+After a module is detected, configure camera frame capture and ISP grayscale/downscale to match the CNN's required 40x30 uint8 tensor (1200 bytes). The camera probe has not yet been built or run by the user; its detection result must be confirmed over UART.
