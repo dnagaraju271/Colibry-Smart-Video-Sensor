@@ -781,3 +781,37 @@ User copied the first 16-image SRAM firmware binary to `build/batches/batch_00.b
 ### Next action
 
 Load `build/batches/batch_00.bin` to volatile SRAM at 0x10000000 using the JTAG SRAM loader with `~/colibry-flash-env/bin/python`; capture UART `/dev/ttyUSB2` at 115200 baud into a unique `build/batch_00_uart.log`. Allow around 60 seconds after loader exit for 16 inference results. Check 16 RESULT rows before proceeding to batch 1. Do not call toflash or make nnpa.
+
+## Physical board inference — batch 0 / dataset indices 0-15 — 2026-11-18
+
+User successfully loaded preserved `build/batches/batch_00.bin` via JTAG SRAM loader:
+- Loader exit code 0; IDCODE 0x249511c3; CPU halt, SRAM write Done, Starting CPU.
+- UART captured 16 machine-readable `RESULT` records; output showed all 16 NNPA inference calls completed.
+- Batch 0 input records:
+  - 0 3_person -> predicted 3_person, logits [82,95,255], correct.
+  - 1 3_person -> predicted 3_person, logits [86,79,255], correct.
+  - 2 3_person -> predicted 3_person, logits [78,112,255], correct.
+  - 3 3_person -> predicted 2_person, logits [146,185,78], incorrect.
+  - 4 2_person -> predicted 2_person, logits [116,237,66], correct.
+  - 5 1_person -> predicted 1_person, logits [201,187,51], correct.
+  - 6 2_person -> predicted 2_person, logits [152,237,53], correct.
+  - 7 1_person -> predicted 1_person, logits [216,180,42], correct.
+  - 8 2_person -> predicted 2_person, logits [121,243,98], correct.
+  - 9 1_person -> predicted 1_person, logits [223,155,49], correct.
+  - 10 1_person -> predicted 1_person, logits [208,174,45], correct.
+  - 11 2_person -> predicted 1_person, logits [241,129,15], incorrect.
+  - 12 1_person -> predicted 1_person, logits [226,137,49], correct.
+  - 13 1_person -> predicted 1_person, logits [211,156,68], correct.
+  - 14 1_person -> predicted 1_person, logits [197,177,39], correct.
+  - 15 1_person -> predicted 1_person, logits [224,133,46], correct.
+- Batch 0 expected class counts: 1_person=8, 2_person=4, 3_person=4.
+- Confusion matrix rows=true, columns=predicted (class order 1_person,2_person,3_person): [[8,0,0],[1,3,0],[0,1,3]].
+- Correct: 14/16 = 87.5% on this batch of existing development/training data.
+- Per-class within this batch: 1_person 8/8; 2_person 3/4; 3_person 3/4.
+- This is not a held-out test or generalization result. The full 71-image audit includes model-development/training images, source groups leak between old train/validation splits, and all 3_person images originate from one source group.
+- The binary for batch 0 was previously preserved at `build/batches/batch_00.bin` with verified SHA-256 `cd8a5fd4bb0fcb8210dd8d18cf024737214ad8ef28d9c7793d7e3613f80796c5`. UART log is `build/batch_00_uart.log`.
+- No external flash was accessed or programmed.
+
+### Next action
+
+Run local summarizer for batch 0 with `--expected-images 16 --csv build/batch_00_results.csv` to preserve computed metrics, then generate batch 1 with `BATCH_START=16 BATCH_SIZE=16`, build, verify SRAM size remains below 128 KiB, preserve `build/batches/batch_01.bin` and SHA-256, and only then load batch 1 into SRAM. Do not overwrite batch 0 binary or UART log.
