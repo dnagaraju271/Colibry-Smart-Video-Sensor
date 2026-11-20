@@ -1,4 +1,21 @@
-# One-frame PAG7920LT live camera inference
+# PAG7920LT live camera capture and inference
+
+## Current firmware mode — 2026-11-20
+
+The current `main.c` is configured for the physical PAG7920LT camera
+(`CAMIF_PATTERN_TEST=0`). It runs a continuous video-mode frame-counter
+test at 150 requested FPS for five seconds, prints CAMIF and ISP register
+snapshots, and returns.
+
+**This current firmware mode does not execute the single-frame capture,
+NNPA input-loading, or inference path described below.** The frame-rate
+measurements prove CAMIF frame-counter progression only. They do not prove
+that a complete image was retrieved or that the ISP scaler produced valid
+image data.
+
+See [continuous camera FPS tests](docs/continuous-camera-fps-tests-2026-11-20.md)
+for the measured results and remaining limitations.
+
 
 This SRAM-only test initializes the confirmed PAG7920LT camera, scales a frame through the Colibry ISP, loads the own-count CNN from an embedded NNPA bitstream, and runs one live inference.
 

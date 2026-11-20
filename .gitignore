@@ -69,3 +69,6 @@ tests/compiler_smoke/dense_detector_baseline/
 # Local generated files
 /Colibry-Smart-Video-Sensor/
 /experiments/professor_demo/task1_c_blinker/build/
+
+# Generated build output for the PAG7920LT camera diagnostic
+/projects/own_dataset_person_count_cnn/camera_live_test/build/

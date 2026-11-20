@@ -4,6 +4,8 @@ This directory is the maintained engineering notebook for the PAG7920LT → CAMI
 
 ## Documents
 
+- [Continuous PAG7920LT FPS tests — 2026-11-20](continuous-camera-fps-tests-2026-11-20.md) — measured CAMIF frame counts, register snapshots, and unresolved image-transfer limitations.
+
 - [ISP register and signal reference](isp-register-reference.md) — register fields, masks, HAL comments, interpretation, and original SDK source paths.
 - [Current capture investigation](capture-investigation-2026-11-18.md) — measured UART evidence, what it proves, what remains unknown, and the next safe checks.
 

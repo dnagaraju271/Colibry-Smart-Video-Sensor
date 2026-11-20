@@ -32,7 +32,7 @@
 #define CAMERA_FPS              1u
 
 /* Set to 0 to restore the physical PAG7920LT single-frame trigger. */
-#define CAMIF_PATTERN_TEST      1u
+#define CAMIF_PATTERN_TEST      0u
 #define FRAME_TIMEOUT_MS        5000u
 #define FRAME_START_TIMEOUT_MS   5000u
 #define INFERENCE_TIMEOUT_MS    3000u
@@ -189,9 +189,51 @@ static uint32_t psb_channels(uint32_t info)
     return ((info >> 22) & 0x3u) + 1u;
 }
 
+static void print_scu_camera_diagnostics(const char *label)
+{
+    const uint32_t isp_clk_cfg = colibrySCU->regmap->scu_isp_clk_cfg.word;
+    const uint32_t periph_reset = colibrySCU->regmap->scu_periph_reset.word;
+    const uint32_t periph_clk_en = colibrySCU->regmap->scu_periph_clk_en.word;
+    const uint32_t isp_clk_src =
+        colibrySCU->regmap->scu_isp_clk_cfg.fields.scu_isp_clk_src;
+
+    printf("\n===== SCU CAMERA DIAGNOSTICS: %s =====\n", label);
+    printf("SCU_ISP_CLK_CFG: 0x%08lx\n", (unsigned long)isp_clk_cfg);
+    printf("SCU_ISP_CLK_SRC: %s (%lu)\n",
+           isp_clk_src ? "HF_CLK" : "CAM_PCLK",
+           (unsigned long)isp_clk_src);
+    printf("SCU_ISP_CLK_DIV: %lu\n",
+           (unsigned long)colibrySCU->regmap->scu_isp_clk_cfg.fields.scu_isp_clk_div);
+    printf("SCU_ISP_CLK_ENFORCE: %lu\n",
+           (unsigned long)colibrySCU->regmap->scu_isp_clk_cfg.fields.scu_isp_clk_enforce);
+    printf("SCU_PERIPH_RESET: 0x%08lx\n", (unsigned long)periph_reset);
+    printf("SCU_CAMIF_RESET: %lu\n",
+           (unsigned long)colibrySCU->regmap->scu_periph_reset.fields.scu_camif_reset);
+    printf("SCU_ISP_RESET: %lu\n",
+           (unsigned long)colibrySCU->regmap->scu_periph_reset.fields.scu_isp_reset);
+    printf("SCU_CAMIF_CLK_EN: %lu\n",
+           (unsigned long)colibrySCU->regmap->scu_periph_clk_en.fields.scu_camif_clk_en);
+    printf("SCU_ISP_CLK_EN: %lu\n",
+           (unsigned long)colibrySCU->regmap->scu_periph_clk_en.fields.scu_isp_clk_en);
+    (void)periph_clk_en;
+    printf("===== END SCU CAMERA DIAGNOSTICS =====\n");
+}
+
+static void print_camif_protocol_diagnostics(const char *label)
+{
+    printf("CAMIF_PROTOCOL_DIAG,%s,word=0x%08lx,data_in_mode=%lu,pixel_in_width=%lu,rgbsplit_r_first=%lu,pclk_sampling_cfg=%lu\n",
+           label,
+           (unsigned long)CAMIF_reg->camif_protocol_cfg.word,
+           (unsigned long)CAMIF_reg->camif_protocol_cfg.fields.data_in_mode,
+           (unsigned long)CAMIF_reg->camif_protocol_cfg.fields.pixel_in_width,
+           (unsigned long)CAMIF_reg->camif_protocol_cfg.fields.rgbsplit_r_first,
+           (unsigned long)CAMIF_reg->camif_protocol_cfg.fields.pclk_sampling_cfg);
+}
+
 static void print_pipeline_registers(const char *label)
 {
     printf("\n===== PIPELINE REGISTERS: %s =====\n", label);
+    print_scu_camera_diagnostics(label);
     printf("SCU_PERIPH_CLK_EN: 0x%08lx\n",
            (unsigned long)colibrySCU->regmap->scu_periph_clk_en.word);
     printf("CAMIF_PROTOCOL_CFG: 0x%08lx\n",
@@ -486,6 +528,16 @@ static int capture_one_frame(void)
         }
 
         colibrySCU->delay_ms(1u);
+        if ((elapsed + 1u) == 1u ||
+            (elapsed + 1u) == 10u ||
+            (elapsed + 1u) == 100u) {
+            printf("PATGEN_SAMPLE_%lums: busy=%lu, img_count=%lu, camif_int=0x%08lx, isp_int=0x%08lx\n",
+                   (unsigned long)(elapsed + 1u),
+                   (unsigned long)CAMIF_reg->camif_patgen_status.fields.patgen_busy,
+                   (unsigned long)CAMIF_reg->camif_img_count.word,
+                   (unsigned long)CAMIF_reg->camif_int_status.word,
+                   (unsigned long)colibryISP->regmap->isp_int_status.word);
+        }
     }
 
     NNPA_reg->nnpa_control.fields.cpu_mem_access = 1u;
@@ -645,6 +697,7 @@ int main(void)
     board_init_cfg.no_printf = 0u;
 
     colibryBoard.global_init(board_init_cfg);
+    print_scu_camera_diagnostics("AFTER_BOARD_INIT");
 
     printf("\n========================================\n");
     printf("OWN COUNT CNN - ONE LIVE CAMERA FRAME\n");
@@ -693,12 +746,14 @@ int main(void)
     colibryBoard.sensors_power_enable();
 
     printf("Initializing PAG7920LT at 160x120...\n");
+    print_camif_protocol_diagnostics("BEFORE_CAMERA_INIT");
     colibryBoard.camera_init(
         CAMERA_INPUT_WIDTH,
         CAMERA_INPUT_HEIGHT,
         CAMERA_ONCHIP_MCLK,
         CAMERA_FPS
     );
+    print_camif_protocol_diagnostics("AFTER_CAMERA_INIT");
 
     if (colibryBoard.camera_model != PAG7920LT) {
         printf("ERROR: Expected PAG7920LT; detected model ID %u.\n",
@@ -710,6 +765,23 @@ int main(void)
 
     /* SDK camera_init configures RAW mode; sensor output is 8-bit. */
     CAMIF_reg->camif_protocol_cfg.fields.pixel_in_width = 8u;
+    print_camif_protocol_diagnostics("AFTER_PIXEL_WIDTH_ASSIGN");
+
+#if CAMIF_PATTERN_TEST
+    printf("Selecting HF_CLK for ISP synthetic-pattern test...\n");
+    colibrySCU->scu_isp_clk_src_set(1u);
+#else
+    printf("Selecting CAM_PCLK for ISP physical-camera diagnostic test...\n");
+    colibrySCU->scu_isp_clk_src_set(0u);
+    CAMIF_reg->camif_cdc_fifo_bypass.word = 1u;
+#endif
+    colibrySCU->delay_ms(1u);
+    printf("ISP_SELECTED_CLK_SRC: %s (%lu)\n",
+           colibrySCU->regmap->scu_isp_clk_cfg.fields.scu_isp_clk_src ? "HF_CLK" : "CAM_PCLK",
+           (unsigned long)colibrySCU->regmap->scu_isp_clk_cfg.fields.scu_isp_clk_src);
+    printf("CAMIF_CDC_FIFO_BYPASS: %lu\n",
+           (unsigned long)CAMIF_reg->camif_cdc_fifo_bypass.fields.cdc_fifo_bypass);
+    print_scu_camera_diagnostics("AFTER_ISP_CLOCK_SELECT");
 
     printf("\nConfiguring ISP for monochrome downscale...\n");
     configure_isp_for_pag7920_mono();
@@ -735,6 +807,39 @@ int main(void)
     printf("ISP Bayer2RGB: bypass\n");
     printf("ISP RGB2GRAY: bypass (mono sensor)\n");
     printf("ISP scaler: 4x, output 40x30\n");
+
+#if !CAMIF_PATTERN_TEST
+    {
+        uint32_t camif_frames;
+
+        printf("\n===== CONTINUOUS CAMERA TEST =====\n");
+        printf("REQUESTED_FPS: 150\n");
+        printf("TEST_DURATION_MS: 5000\n");
+
+        CAMIF_reg->camif_img_count_rst.word = 1u;
+        CAMIF_reg->camif_int_clear.word = 0x3Fu;
+        colibryISP->regmap->isp_int_clear.word = 0x3Fu;
+
+        colibryBoard.cameraPAG7920LT.startVideoMode(150u);
+        colibrySCU->delay_ms(5000u);
+        colibryBoard.cameraPAG7920LT.stopVideoMode();
+        colibrySCU->delay_ms(200u);
+
+        camif_frames = CAMIF_reg->camif_img_count.fields.img_count;
+
+        printf("CAMERA_CONTINUOUS_TEST_FRAMES: %lu\n",
+               (unsigned long)camif_frames);
+        printf("CAMIF_IMG_CURR_PTR: 0x%08lx\n",
+               (unsigned long)CAMIF_reg->camif_img_curr_ptr.word);
+        printf("CAMIF_INT_STATUS: 0x%08lx\n",
+               (unsigned long)CAMIF_reg->camif_int_status.word);
+        printf("ISP_INT_STATUS: 0x%08lx\n",
+               (unsigned long)colibryISP->regmap->isp_int_status.word);
+
+        printf("===== END CONTINUOUS CAMERA TEST =====\n");
+        return 0;
+    }
+#endif
 
     result = capture_one_frame();
     if (result != 0) {
