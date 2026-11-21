@@ -261,8 +261,8 @@ Use the compiler-compatible exporter after training:
 ~/colibry-cnn-env/bin/python projects/own_dataset_person_count_cnn/training/export_legacy_keras_for_colibry.py
 ```
 
-Default source model: `projects/own_dataset_person_count_cnn/models/host_experiment/own_count_cnn.keras`.
-Default H5 output: `~/models/edgeguard_own_count/own_count_cnn_legacy.h5`.
+Default source model: `projects/own_dataset_person_count_cnn/models/four_class_71plus111_group_split/own_count_cnn.keras`.
+Default H5 output: `~/models/edgeguard_own_count/dataset_71plus111/own_count_cnn_legacy.h5`.
 
 The exporter verifies the same two trainable layers, parameter count, saved/reloaded weights, and prediction parity.
 
