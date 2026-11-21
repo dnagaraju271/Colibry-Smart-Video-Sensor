@@ -22,6 +22,31 @@ The separate `simple_person_cnn/` folder remains the older binary `person` / `no
 
 The archive also contains three zero-person originals in `pending_for_later_originals`; those are not included in the current 3-class training. All four 3-person images come from one source group, and the earlier train/validation split shared five source groups. Current metrics are preliminary and optimistic.
 
+## Additional outdoor collection (2026-11-20)
+
+A second collection of 111 outdoor photographs has been manually reviewed and
+processed to 160x120 8-bit grayscale. Its separate archive is
+`datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111.zip`.
+
+| Visible people | New images | Handling in current model |
+|---|---:|---|
+| 1_person | 13 | Training eligible |
+| 2_person | 58 | Training eligible |
+| 3_person | 25 | Training eligible |
+| 0 people | 1 | Preserved in pending folder; excluded |
+| 4 people | 14 | Preserved in pending folder; excluded |
+
+This contributes 96 additional examples to the current 1/2/3 classes. Together
+with the existing 71 labeled images, the eligible distribution becomes
+72 / 66 / 29. The existing model does not support zero or four-person output;
+those images are not relabeled to force them into a supported class.
+
+The 111 photos represent only 14 source-time groups and contain near-consecutive
+frames. They should not be treated as 111 independent scenes. The training
+loader accepts the new archive with `--additional-archive`; see
+`training/README.md`. Validation should ideally hold out complete source groups
+before making generalization claims.
+
 ## Model
 
 - Input tensor: `[1, 30, 40, 1]` grayscale.
