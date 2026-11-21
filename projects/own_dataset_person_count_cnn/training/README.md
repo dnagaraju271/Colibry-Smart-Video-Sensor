@@ -2,23 +2,64 @@
 
 Training runs on the Ubuntu host using TensorFlow. The Colibry NNPA is an inference accelerator; it does not train model weights.
 
-## Train
+## Current run: DATASET185 (2026-11-21)
 
-From the repository root:
+The latest standalone outdoor collection is:
+
+`datasets/mobile_160x120/DATASET185_160x120_Grayscale_Scene_Organized.zip`
+
+It contains 185 unique 160x120 grayscale PNGs in the same `0_person/` through
+`4_person/` folder and scene/frame naming structure used by the prior dataset.
+
+| Visible people | Images | Training handling |
+|---|---:|---|
+| 0 | 5 | Retained in the archive; skipped by the current model |
+| 1 | 75 | Included |
+| 2 | 63 | Included |
+| 3 | 27 | Included |
+| 4 | 15 | Included |
+| **Total** | **185** | **180 used for four-class training** |
+
+The existing classifier is deliberately a four-output model for exact visible
+counts 1, 2, 3 and 4. It does not classify an empty scene. The five
+zero-person images remain in the archive but are not used as negatives.
+
+The camera sensor supplies 160x120 grayscale; the current Colibry model input
+is 40x30x1. The trainer applies the same Lanczos resize to 40x30 and scales
+pixels to float32 [0,1]. The model keeps exactly two trainable layers:
+`Conv2D(4, 3x3, ReLU)` and `Dense(4)` (Flatten is non-trainable).
+
+The trainer uses class weights and a `StratifiedGroupKFold` split. It holds
+out whole source scenes rather than splitting adjacent frames from one scene
+between training and validation. Validation is still preliminary: there are
+only 20 source scenes and just 15 four-person images. A separate newly
+collected scene set is needed for a credible generalization test.
+
+From the repository root, put the ZIP at the path above, then run a read-only
+dataset/model check:
 
 ```bash
 python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py --check-only
-python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py --epochs 40
 ```
 
-Defaults:
-- Dataset: `datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip`.
-- Output: `projects/own_dataset_person_count_cnn/models/host_experiment/`.
-- Input: 160x120 grayscale Lanczos resize to 40x30; float32 scaled to [0,1].
-- Classes: `1_person`, `2_person`, `3_person`.
-- Exactly two trainable layers: Conv2D and Dense.
+Train into a new experiment folder so the prior 71-, 182-image, and other
+model artifacts remain untouched:
 
-The validation split is image-level stratified, not source-group held out. The six source groups overlap between train/validation; in fact all four 3-person images originate from one group. Treat validation metrics as preliminary only.
+```bash
+python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
+  --epochs 40 \
+  --output-dir projects/own_dataset_person_count_cnn/models/dataset185_four_class_group_split
+```
+
+Expected output files:
+- `own_count_cnn.keras` — host model
+- `own_count_cnn.tflite` — float TFLite export from the trained model
+- `best.weights.h5` — best validation checkpoint
+- `experiment_report.json` — split groups, class counts, confusion matrix and metrics
+
+The current training script also accepts manifest image-path columns named
+`output_file`, `output_path`, or `output_filename`, so it reads both the
+earlier and this latest dataset manifest format.
 
 ## Four-class dataset and training
 
