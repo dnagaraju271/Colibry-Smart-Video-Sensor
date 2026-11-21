@@ -24,7 +24,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_ARCHIVE = ROOT / "datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip"
 DEFAULT_OUTPUT = ROOT / "projects/own_dataset_person_count_cnn/models/host_experiment"
-CLASS_NAMES = ["1_person", "2_person", "3_person"]
+CLASS_NAMES = ["1_person", "2_person", "3_person", "4_person"]
 CLASS_TO_ID = {name: index for index, name in enumerate(CLASS_NAMES)}
 IMAGE_WIDTH, IMAGE_HEIGHT, CHANNELS = 40, 30, 1
 
@@ -166,7 +166,7 @@ def build_model() -> tf.keras.Model:
             ),
             tf.keras.layers.Flatten(name="flatten"),
             # Linear logits keep the graph within a simple Conv/ReLU + Dense path.
-            tf.keras.layers.Dense(3, activation="linear", name="class_logits"),
+            tf.keras.layers.Dense(4, activation="linear", name="class_logits"),
         ],
         name="edgeguard_own_count_cnn",
     )
@@ -294,7 +294,7 @@ def main() -> None:
         ),
         "trainable_layers": trainable_layers,
         "trainable_parameters": int(model.count_params()),
-        "supported_count_range": "1, 2, or 3 visible people; zero and >3 examples are retained in pending folders and skipped",
+        "supported_count_range": "1, 2, 3, or 4 visible people; zero-person examples are retained in pending folders and skipped",
     }
     print("\n=== DATASET AND MODEL CHECK ===")
     print(json.dumps(summary, indent=2))
