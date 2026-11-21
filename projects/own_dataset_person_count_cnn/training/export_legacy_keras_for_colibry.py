@@ -24,7 +24,7 @@ DEFAULT_SOURCE = (
 )
 DEFAULT_OUTPUT = Path.home() / "models/edgeguard_own_count/own_count_cnn_legacy.h5"
 EXPECTED_INPUT = (None, 30, 40, 1)
-EXPECTED_OUTPUT = (None, 3)
+EXPECTED_OUTPUT = (None, 4)
 EXPECTED_TRAINABLE_LAYERS = ["conv2d", "class_logits"]
 
 
@@ -57,7 +57,7 @@ def build_legacy_model() -> tf_keras.Model:
             ),
             tf_keras.layers.Flatten(name="flatten"),
             tf_keras.layers.Dense(
-                units=3,
+                units=4,
                 activation="linear",
                 name="class_logits",
             ),
