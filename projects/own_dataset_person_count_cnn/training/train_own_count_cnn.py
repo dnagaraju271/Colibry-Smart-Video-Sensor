@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train the own-dataset 3-class, two-trainable-layer CNN.
+"""Train the own-dataset 4-class, two-trainable-layer CNN.
 
 Reads the selected OWN_Dataset ZIP directly. The archive is never extracted
 or modified. Validation is an image-level stratified split and is preliminary:
@@ -72,9 +72,9 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
                 class_name = PurePosixPath(output_file).parts[0]
                 count = int(row["visible_person_count"])
 
-                # Zero-person originals are intentionally pending and must not
-                # be imported into this 1/2/3-person experiment yet.
-                if class_name == "pending_for_later_originals":
+                # Zero-person originals are retained in the archive but the
+                # current 1/2/3/4 classifier does not train on a zero-person class.
+                if class_name in {"pending_for_later_originals", "0_person"}:
                     if count != 0:
                         raise ValueError(
                             f"Manifest line {line_no}: pending originals must have count 0"
@@ -82,12 +82,12 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
                     pending_zero_person_skipped += 1
                     continue
 
-                # Preserve four-or-more-person originals, but do not train the
-                # current exact 1/2/3-count classifier on an unsupported class.
-                if class_name == "pending_over_3_originals":
-                    if count <= 3:
+                # Preserve more-than-four-person originals without folding
+                # them into the exact-four class.
+                if class_name in {"pending_over_3_originals", "pending_over_4_originals"}:
+                    if count <= 4:
                         raise ValueError(
-                            f"Manifest line {line_no}: over-3 pending entry must have count > 3"
+                            f"Manifest line {line_no}: over-4 pending entry must have count > 4"
                         )
                     pending_over_3_person_skipped += 1
                     continue
@@ -294,7 +294,7 @@ def main() -> None:
         ),
         "trainable_layers": trainable_layers,
         "trainable_parameters": int(model.count_params()),
-        "supported_count_range": "1, 2, 3, or 4 visible people; zero-person examples are retained in pending folders and skipped",
+        "supported_count_range": "1, 2, 3, or 4 visible people; zero-person and >4 examples are retained in pending folders and skipped",
     }
     print("\n=== DATASET AND MODEL CHECK ===")
     print(json.dumps(summary, indent=2))
