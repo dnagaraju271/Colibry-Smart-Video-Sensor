@@ -2,65 +2,114 @@
 
 Training runs on the Ubuntu host using TensorFlow. The Colibry NNPA is an inference accelerator; it does not train model weights.
 
-## Current run: DATASET185 (2026-11-21)
+## Current run: deduplicated 71 + 111 scene dataset (2026-11-21)
 
-The latest standalone outdoor collection is:
+The current combined dataset is:
 
-`datasets/mobile_160x120/DATASET185_160x120_Grayscale_Scene_Organized.zip`
+`datasets/mobile_160x120/OWN_Dataset_71plus111_Deduplicated_Scene_Frames_160x120.zip`
 
-It contains 185 unique 160x120 grayscale PNGs in the same `0_person/` through
-`4_person/` folder and scene/frame naming structure used by the prior dataset.
+The two source collections contained 182 entries (the original 71 plus 111
+new timestamped outdoor photographs). Exact pixel comparison after
+160x120 grayscale normalization found that **all 71 legacy images duplicate
+images already present in the newer 111-image collection**. The old 71
+frames contain only three distinct grayscale pixel patterns, all of which
+are already represented in the newer archive. Therefore the correct
+deduplicated union contains **111 unique frames**, not 182. The 111 newer
+timestamped frames are retained because they preserve the walking-scene
+sequence context. The 71 old duplicates are mapped to retained files in
+`duplicates_removed.csv`.
 
-| Visible people | Images | Training handling |
+| Visible people | Unique images | Training handling |
 |---|---:|---|
-| 0 | 5 | Retained in the archive; skipped by the current model |
-| 1 | 75 | Included |
-| 2 | 63 | Included |
-| 3 | 27 | Included |
-| 4 | 15 | Included |
-| **Total** | **185** | **180 used for four-class training** |
+| 0 | 1 | Retained in `0_person`; skipped by the four-output model |
+| 1 | 13 | Included |
+| 2 | 58 | Included |
+| 3 | 25 | Included |
+| 4 | 14 | Included |
+| **Total** | **111** | **110 used for four-class training** |
 
-The existing classifier is deliberately a four-output model for exact visible
-counts 1, 2, 3 and 4. It does not classify an empty scene. The five
-zero-person images remain in the archive but are not used as negatives.
+Four-person examples are included as a full fourth class. The existing model
+has outputs for exact counts 1, 2, 3, and 4. The one empty-scene image is
+preserved separately and is not treated as a one-person example.
 
-The camera sensor supplies 160x120 grayscale; the current Colibry model input
-is 40x30x1. The trainer applies the same Lanczos resize to 40x30 and scales
-pixels to float32 [0,1]. The model keeps exactly two trainable layers:
-`Conv2D(4, 3x3, ReLU)` and `Dense(4)` (Flatten is non-trainable).
+### Resolution, folders, and scene/frame names
 
-The trainer uses class weights and a `StratifiedGroupKFold` split. It holds
-out whole source scenes rather than splitting adjacent frames from one scene
-between training and validation. Validation is still preliminary: there are
-only 20 source scenes and just 15 four-person images. A separate newly
-collected scene set is needed for a credible generalization test.
+All images are 160x120, 8-bit grayscale PNG (mode L), stored in their
+corresponding class folders: `0_person/` through `4_person/`.
 
-From the repository root, put the ZIP at the path above, then run a read-only
-dataset/model check:
+The filename convention is:
+
+`I{count}_{scene}_{frame}.png`
+
+Frame numbers increase across **all count folders** inside a scene. Example
+from the first timestamped scene:
+
+- `2_person/I2_001_001.png`
+- `1_person/I1_001_002.png`
+- `2_person/I2_001_003.png`
+- `1_person/I1_001_004.png`
+
+Here `I2` means two visible people, `001` identifies the scene, and the
+last number is the frame's position in the scene. This matches the requested
+walking-sequence layout: each image lives in its class folder while the
+frame number follows the entire scene, not just one class.
+
+There are **14 timestamped scenes** in this deduplicated collection. Each
+scene keeps its actual number of frames (1–15); scenes are not padded or
+forced to exactly eight images. Within a timestamp group, the WhatsApp
+filename collision suffix is sorted numerically (base filename, then
+`(1)`, `(2)`, etc.). This gives a reproducible ordering but cannot recover
+exact sub-second chronology.
+
+### Entry, exit, and movement direction
+
+`scene_directions.csv` contains one entry/exit record per scene, and the
+same scene-level fields are copied into each manifest row:
+
+- Six longer reviewed scenes (15.08.18–15.08.23): `LEFT_AND_RIGHT` entry
+  and exit, `BIDIRECTIONAL` movement.
+- Eight shorter scenes: `UNKNOWN`, because still images do not establish
+  a defensible entry-to-exit path.
+
+These labels describe coarse scene-level movement only. The photographs do
+not provide persistent person IDs or per-person tracks, bounding boxes, or
+exact individual trajectories. Do not interpret `LEFT_AND_RIGHT` as a
+person-level tracking annotation.
+
+### Check and train
+
+The current host model retains exactly two trainable layers
+(`Conv2D(4, 3x3, ReLU)` and `Dense(4)`) and downsamples 160x120 images to
+the Colibry input shape 40x30x1 using Lanczos resize.
+
+The trainer uses class weights and a source-scene-held-out
+`StratifiedGroupKFold` validation split, so adjacent frames from a scene
+cannot leak between training and validation. With only 14 scenes and
+relatively few 3-/4-person scenes, validation remains preliminary.
+
+First run the read-only archive/model check:
 
 ```bash
 python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py --check-only
 ```
 
-Train into a new experiment folder so the prior 71-, 182-image, and other
-model artifacts remain untouched:
+Then train into a separate directory:
 
 ```bash
 python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
   --epochs 40 \
-  --output-dir projects/own_dataset_person_count_cnn/models/dataset185_four_class_group_split
+  --batch-size 8 \
+  --output-dir projects/own_dataset_person_count_cnn/models/four_class_71plus111_group_split
 ```
 
-Expected output files:
-- `own_count_cnn.keras` — host model
-- `own_count_cnn.tflite` — float TFLite export from the trained model
-- `best.weights.h5` — best validation checkpoint
-- `experiment_report.json` — split groups, class counts, confusion matrix and metrics
+Outputs are `own_count_cnn.keras`, `own_count_cnn.tflite`,
+`best.weights.h5`, and `experiment_report.json`.
 
-The current training script also accepts manifest image-path columns named
-`output_file`, `output_path`, or `output_filename`, so it reads both the
-earlier and this latest dataset manifest format.
-
+The camera firmware still embeds the historical three-class NNPA. Training
+does not update the board model. A new four-class model must be exported,
+quantized, compiled to NNPA and integrated into the firmware before the
+Colibry can output four-person predictions.
+ 
 ## Four-class dataset and training
 
 The additional archive is:
