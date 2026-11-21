@@ -102,8 +102,19 @@ python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
   --output-dir projects/own_dataset_person_count_cnn/models/four_class_71plus111_group_split
 ```
 
-Outputs are `own_count_cnn.keras`, `own_count_cnn.tflite`,
-`best.weights.h5`, and `experiment_report.json`.
+Outputs are:
+- `own_count_cnn.keras` — trained host model
+- `own_count_cnn.tflite` — float TFLite reference
+- `own_count_cnn_uint8.tflite` — full-integer TFLite with uint8 input and output
+- `best.weights.h5` — best validation checkpoint
+- `experiment_report.json` — split groups, class counts, float and quantized validation metrics, tensor shapes, and quantization parameters
+
+The uint8 export uses representative frames from the training split for
+post-training calibration and validates that the input is `[1,30,40,1]`,
+the output is `[1,4]`, and both tensor interfaces are uint8. It also reports
+the quantized-model validation accuracy. The NNPA compiler must still confirm
+that this TFLite model is supported; a successful TFLite export alone does
+not prove NNPA compatibility.
 
 The camera firmware still embeds the historical three-class NNPA. Training
 does not update the board model. A new four-class model must be exported,
