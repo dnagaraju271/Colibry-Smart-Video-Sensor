@@ -22,8 +22,8 @@ import tensorflow as tf
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_ARCHIVE = ROOT / "datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip"
-DEFAULT_OUTPUT = ROOT / "projects/own_dataset_person_count_cnn/models/host_experiment"
+DEFAULT_ARCHIVE = ROOT / "datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip"
+DEFAULT_OUTPUT = ROOT / "projects/own_dataset_person_count_cnn/models/four_class_scene_experiment"
 CLASS_NAMES = ["1_person", "2_person", "3_person", "4_person"]
 CLASS_TO_ID = {name: index for index, name in enumerate(CLASS_NAMES)}
 IMAGE_WIDTH, IMAGE_HEIGHT, CHANNELS = 40, 30, 1
