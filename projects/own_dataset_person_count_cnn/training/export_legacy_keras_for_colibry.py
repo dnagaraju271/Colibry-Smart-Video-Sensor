@@ -20,7 +20,7 @@ import tf_keras
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SOURCE = (
-    ROOT / "projects/own_dataset_person_count_cnn/models/host_experiment/own_count_cnn.keras"
+    ROOT / "projects/own_dataset_person_count_cnn/models/four_class_71plus111_group_split/own_count_cnn.keras"
 )
 DEFAULT_OUTPUT = Path.home() / "models/edgeguard_own_count/own_count_cnn_legacy.h5"
 EXPECTED_INPUT = (None, 30, 40, 1)
