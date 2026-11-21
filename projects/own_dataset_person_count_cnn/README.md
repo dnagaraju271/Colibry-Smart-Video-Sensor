@@ -22,32 +22,40 @@ The separate `simple_person_cnn/` folder remains the older binary `person` / `no
 
 The archive also contains three zero-person originals in `pending_for_later_originals`; those are not included in the current 3-class training. All four 3-person images come from one source group, and the earlier train/validation split shared five source groups. Current metrics are preliminary and optimistic.
 
-## Additional outdoor collection (2026-11-20)
+## Additional outdoor collection (2026-11-20) — four-class revision
 
-A second collection of 111 outdoor photographs has been manually reviewed and
-processed to 160x120 8-bit grayscale. Its separate archive is
-`datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111.zip`.
+The additional archive is
+`datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111_4class.zip`.
+All 111 photographs were reviewed and processed to 160x120 8-bit grayscale.
 
-| Visible people | New images | Handling in current model |
+| Visible people | New images | Handling |
 |---|---:|---|
-| 1_person | 13 | Training eligible |
-| 2_person | 58 | Training eligible |
-| 3_person | 25 | Training eligible |
-| 0 people | 1 | Preserved in pending folder; excluded |
-| 4 people | 14 | Preserved in pending folder; excluded |
+| 0 | 1 | Retained pending; excluded from current classifier |
+| 1 | 13 | Included |
+| 2 | 58 | Included |
+| 3 | 25 | Included |
+| 4 | 14 | Included |
 
-This contributes 96 additional examples to the current 1/2/3 classes. Together
-with the existing 71 labeled images, the eligible distribution becomes
-72 / 66 / 29. The existing model does not support zero or four-person output;
-those images are not relabeled to force them into a supported class.
+Combined with the original 71 labeled images, the four-class training
+distribution is **72 / 66 / 29 / 14** for 1 / 2 / 3 / 4 people (181 images).
+The zero-person sample remains pending. The four-person samples span six
+source-time groups and include near-consecutive frames; they are not
+independent scenes.
 
-The 111 photos represent only 14 source-time groups and contain near-consecutive
-frames. They should not be treated as 111 independent scenes. The training
-loader accepts the new archive with `--additional-archive`; see
-`training/README.md`. Validation should ideally hold out complete source groups
-before making generalization claims.
+The training script and legacy Keras exporter have been updated for four
+classes. The 40x30x1 input and exactly two trainable layers are retained, with
+the Dense output changed from three to four logits. See
+`training/README.md` for the check-only and training commands.
 
-## Model
+**Important:** the NNPA bitstream currently embedded in the camera firmware
+is still the old three-class artifact. A new four-class model must be trained,
+quantized, compiled to NNPA, and verified before changing board output parsing
+or claiming four-class inference. Do not use the old NNPA for 4-person
+classification.
+
+## Existing three-class model baseline (historical)
+
+The following specifications describe the previously trained three-class model, not the pending four-class retrain.
 
 - Input tensor: `[1, 30, 40, 1]` grayscale.
 - Trainable layers: `Conv2D(4, 3x3, ReLU)` and `Dense(3)`; Flatten is a non-trainable shape operation.
