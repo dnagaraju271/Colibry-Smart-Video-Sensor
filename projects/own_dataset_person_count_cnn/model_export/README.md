@@ -14,4 +14,16 @@ Output metadata: uint8 shape `[1,3]`, scale `0.024000564590096474`, zero point 2
 
 The board demo generator checks the NNPA size and SHA-256 before embedding it in the SRAM firmware.
 
+## Four-class retrain status
+
+The artifact above remains the previous three-class model with output shape
+`[1,3]`. It is **not compatible** with four-class labels and must not be used
+to claim 4-person prediction.
+
+The updated host training model and legacy exporter now target output shape
+`[1,4]`. After training the four-class model, regenerate the uint8 TFLite
+artifact, compile a new NNPA bitstream, record its new size and SHA-256, and
+only then update the firmware's embedded-header checks and four-class output
+parser. The old artifact and its hashes remain documented for traceability.
+
 These artifacts are local under `~/models/edgeguard_own_count/ptq/`; model binaries and weights are not committed to GitHub. Re-check local SHA-256 values before use. The compile artifact is for inference only.
