@@ -2,8 +2,8 @@
 """Train the own-dataset 4-class, two-trainable-layer CNN.
 
 Reads the selected OWN_Dataset ZIP directly. The archive is never extracted
-or modified. Validation is an image-level stratified split and is preliminary:
-related frames from the same source timestamp may cross the split.
+or modified. Validation is stratified by source scene so adjacent frames from
+one timestamp group cannot cross between training and validation.
 """
 from __future__ import annotations
 
@@ -344,7 +344,7 @@ def main() -> None:
         "validation_warning": (
             "Complete source scenes are held out, preventing adjacent frames from "
             "crossing the split. Metrics are still preliminary because the dataset "
-            "has only 20 source scenes and relatively few 3- and 4-person scenes."
+            "has a limited number of source scenes and relatively few 3- and 4-person scenes."
         ),
         "trainable_layers": trainable_layers,
         "trainable_parameters": int(model.count_params()),
