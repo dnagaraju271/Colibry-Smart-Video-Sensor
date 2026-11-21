@@ -20,10 +20,11 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 from PIL import Image
+from sklearn.model_selection import StratifiedGroupKFold
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_ARCHIVE = ROOT / "datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip"
-DEFAULT_OUTPUT = ROOT / "projects/own_dataset_person_count_cnn/models/four_class_scene_experiment"
+DEFAULT_ARCHIVE = ROOT / "datasets/mobile_160x120/DATASET185_160x120_Grayscale_Scene_Organized.zip"
+DEFAULT_OUTPUT = ROOT / "projects/own_dataset_person_count_cnn/models/dataset185_four_class_group_split"
 CLASS_NAMES = ["1_person", "2_person", "3_person", "4_person"]
 CLASS_TO_ID = {name: index for index, name in enumerate(CLASS_NAMES)}
 IMAGE_WIDTH, IMAGE_HEIGHT, CHANNELS = 40, 30, 1
@@ -55,13 +56,23 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
 
         with archive.open(manifests[0]) as raw:
             reader = csv.DictReader(io.TextIOWrapper(raw, encoding="utf-8-sig", newline=""))
-            required = {"source_filename", "visible_person_count", "output_file"}
+            required = {"source_filename", "visible_person_count"}
             if not reader.fieldnames or not required.issubset(reader.fieldnames):
                 raise ValueError(f"Manifest must contain columns: {sorted(required)}")
+            output_fields = ("output_file", "output_path", "output_filename")
+            if not any(field in reader.fieldnames for field in output_fields):
+                raise ValueError(
+                    "Manifest must contain one image path column: "
+                    + ", ".join(output_fields)
+                )
 
             seen_outputs: set[str] = set()
             for line_no, row in enumerate(reader, start=2):
-                output_file = (row.get("output_file") or "").strip()
+                output_file = next(
+                    ((row.get(field) or "").strip() for field in output_fields
+                     if (row.get(field) or "").strip()),
+                    "",
+                )
                 source = (row.get("source_filename") or "").strip()
                 if not output_file or not source:
                     raise ValueError(f"Manifest line {line_no}: missing source/output filename")
@@ -117,7 +128,7 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
                     "output_file": output_file,
                     "source_filename": source,
                     "class_name": class_name,
-                    "group": source_group(source),
+                    "group": (row.get("scene_id") or "").strip() or source_group(source),
                 })
 
     if not images:
@@ -131,28 +142,64 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
     )
 
 
-def stratified_split(
-    labels: np.ndarray, validation_fraction: float, seed: int
+def stratified_group_split(
+    labels: np.ndarray,
+    groups: np.ndarray,
+    validation_fraction: float,
+    seed: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    rng = np.random.default_rng(seed)
-    train_indices: list[int] = []
-    validation_indices: list[int] = []
-    for class_id, class_name in enumerate(CLASS_NAMES):
-        class_indices = np.flatnonzero(labels == class_id)
-        if len(class_indices) < 2:
-            raise ValueError(
-                f"{class_name} has {len(class_indices)} images; at least two are required"
-            )
-        shuffled = rng.permutation(class_indices)
-        val_count = max(1, int(round(len(shuffled) * validation_fraction)))
-        val_count = min(val_count, len(shuffled) - 1)
-        validation_indices.extend(shuffled[:val_count].tolist())
-        train_indices.extend(shuffled[val_count:].tolist())
-    return (
-        rng.permutation(np.asarray(train_indices, dtype=np.int64)),
-        rng.permutation(np.asarray(validation_indices, dtype=np.int64)),
+    """Hold out complete source scenes while keeping all four classes represented."""
+    unique_groups = np.unique(groups)
+    if len(unique_groups) < 2:
+        raise ValueError("At least two source scenes are required for group validation")
+
+    total_counts = np.bincount(labels, minlength=len(CLASS_NAMES))
+    n_splits = max(2, int(round(1.0 / validation_fraction)))
+    n_splits = min(n_splits, len(unique_groups))
+    splitter = StratifiedGroupKFold(
+        n_splits=n_splits,
+        shuffle=True,
+        random_state=seed,
     )
 
+    candidates: list[tuple[float, np.ndarray, np.ndarray]] = []
+    for train_indices, validation_indices in splitter.split(
+        np.zeros((len(labels), 1), dtype=np.uint8), labels, groups
+    ):
+        train_counts = np.bincount(labels[train_indices], minlength=len(CLASS_NAMES))
+        validation_counts = np.bincount(
+            labels[validation_indices], minlength=len(CLASS_NAMES)
+        )
+        # A valid fold must preserve every class in both subsets.
+        if np.any(train_counts == 0) or np.any(validation_counts == 0):
+            continue
+
+        actual_validation_fraction = len(validation_indices) / len(labels)
+        per_class_validation_fractions = validation_counts / total_counts
+        score = (
+            abs(actual_validation_fraction - validation_fraction)
+            + float(np.mean(
+                np.abs(per_class_validation_fractions - validation_fraction)
+            ))
+        )
+        candidates.append((score, train_indices, validation_indices))
+
+    if not candidates:
+        raise ValueError(
+            "Could not form a source-scene-held-out validation split containing "
+            "all four classes in both train and validation. Collect more scenes "
+            "for each class or adjust --validation-fraction."
+        )
+
+    _, train_indices, validation_indices = min(
+        candidates, key=lambda item: item[0]
+    )
+    if set(groups[train_indices]) & set(groups[validation_indices]):
+        raise RuntimeError("Source-scene leakage detected between train and validation")
+    return (
+        np.asarray(train_indices, dtype=np.int64),
+        np.asarray(validation_indices, dtype=np.int64),
+    )
 
 def build_model() -> tf.keras.Model:
     """Exactly two trainable layers: Conv2D and Dense (linear output logits)."""
@@ -256,7 +303,10 @@ def main() -> None:
             records.append(record)
     pending_zero_person_skipped = sum(part[3] for part in loaded)
     pending_over_3_person_skipped = sum(part[4] for part in loaded)
-    train_idx, val_idx = stratified_split(y, args.validation_fraction, args.seed)
+    source_groups = np.asarray([record["group"] for record in records], dtype=str)
+    train_idx, val_idx = stratified_group_split(
+        y, source_groups, args.validation_fraction, args.seed
+    )
     x_train, y_train = x[train_idx], y[train_idx]
     x_val, y_val = x[val_idx], y[val_idx]
     train_records = [records[int(i)] for i in train_idx]
@@ -287,10 +337,14 @@ def main() -> None:
         "validation_images": int(len(val_idx)),
         "validation_class_distribution": distribution(y_val),
         "source_groups_total": len(train_groups | val_groups),
+        "split_method": "StratifiedGroupKFold; complete source scenes held out",
+        "train_source_groups": sorted(train_groups),
+        "validation_source_groups": sorted(val_groups),
         "source_groups_shared_between_splits": overlap,
         "validation_warning": (
-            "Image-level stratified split; related source groups occur in both splits. "
-            "Validation metrics are preliminary and may be optimistic."
+            "Complete source scenes are held out, preventing adjacent frames from "
+            "crossing the split. Metrics are still preliminary because the dataset "
+            "has only 20 source scenes and relatively few 3- and 4-person scenes."
         ),
         "trainable_layers": trainable_layers,
         "trainable_parameters": int(model.count_params()),
