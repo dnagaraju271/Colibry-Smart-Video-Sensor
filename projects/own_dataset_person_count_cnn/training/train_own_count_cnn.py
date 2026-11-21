@@ -37,7 +37,7 @@ def source_group(source_filename: str) -> str:
     return match.group(1) if match else source_filename
 
 
-def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str]], int]:
+def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str]], int, int]:
     if not path.is_file():
         raise FileNotFoundError(f"Dataset archive not found: {path}")
 
@@ -45,6 +45,7 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
     labels: list[int] = []
     records: list[dict[str, str]] = []
     pending_zero_person_skipped = 0
+    pending_over_3_person_skipped = 0
 
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
@@ -79,6 +80,16 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
                             f"Manifest line {line_no}: pending originals must have count 0"
                         )
                     pending_zero_person_skipped += 1
+                    continue
+
+                # Preserve four-or-more-person originals, but do not train the
+                # current exact 1/2/3-count classifier on an unsupported class.
+                if class_name == "pending_over_3_originals":
+                    if count <= 3:
+                        raise ValueError(
+                            f"Manifest line {line_no}: over-3 pending entry must have count > 3"
+                        )
+                    pending_over_3_person_skipped += 1
                     continue
 
                 if class_name not in CLASS_TO_ID:
@@ -116,6 +127,7 @@ def load_archive(path: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, str
         np.asarray(labels, np.int32),
         records,
         pending_zero_person_skipped,
+        pending_over_3_person_skipped,
     )
 
 
@@ -207,6 +219,10 @@ def evaluate_classes(y_true: np.ndarray, logits: np.ndarray) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
+    parser.add_argument(
+        "--additional-archive", type=Path, action="append", default=[],
+        help="Additional dataset ZIP; may be repeated to combine labeled collections.",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=8)
@@ -220,10 +236,26 @@ def main() -> None:
     if not 0.10 <= args.validation_fraction <= 0.40:
         parser.error("--validation-fraction must be between 0.10 and 0.40")
 
-    archive_path = args.archive.expanduser().resolve()
+    archive_paths = [
+        args.archive.expanduser().resolve(),
+        *(path.expanduser().resolve() for path in args.additional_archive),
+    ]
     output_dir = args.output_dir.expanduser().resolve()
     tf.keras.utils.set_random_seed(args.seed)
-    x, y, records, pending_zero_person_skipped = load_archive(archive_path)
+
+    loaded = [load_archive(path) for path in archive_paths]
+    x = np.concatenate([part[0] for part in loaded], axis=0)
+    y = np.concatenate([part[1] for part in loaded], axis=0)
+    records: list[dict[str, str]] = []
+    for archive_path, part in zip(archive_paths, loaded):
+        for record in part[2]:
+            record = dict(record)
+            record["archive"] = str(archive_path)
+            # Keep source-group IDs unique when multiple archives are combined.
+            record["group"] = f"{archive_path.stem}:{record['group']}"
+            records.append(record)
+    pending_zero_person_skipped = sum(part[3] for part in loaded)
+    pending_over_3_person_skipped = sum(part[4] for part in loaded)
     train_idx, val_idx = stratified_split(y, args.validation_fraction, args.seed)
     x_train, y_train = x[train_idx], y[train_idx]
     x_val, y_val = x[val_idx], y[val_idx]
@@ -242,9 +274,10 @@ def main() -> None:
         raise RuntimeError(f"Expected exactly Conv2D and Dense trainable layers; got {trainable_layers}")
 
     summary = {
-        "archive": str(archive_path),
-        "total_images": int(len(x)),
+        "archives": [str(path) for path in archive_paths],
+        "total_training_eligible_images": int(len(x)),
         "pending_zero_person_entries_skipped": int(pending_zero_person_skipped),
+        "pending_over_3_person_entries_skipped": int(pending_over_3_person_skipped),
         "original_image_size": [160, 120],
         "model_input_shape": [IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS],
         "classes": CLASS_NAMES,
@@ -261,7 +294,7 @@ def main() -> None:
         ),
         "trainable_layers": trainable_layers,
         "trainable_parameters": int(model.count_params()),
-        "supported_count_range": "1, 2, or 3 visible people; no zero-person or >3 class yet",
+        "supported_count_range": "1, 2, or 3 visible people; zero and >3 examples are retained in pending folders and skipped",
     }
     print("\n=== DATASET AND MODEL CHECK ===")
     print(json.dumps(summary, indent=2))
