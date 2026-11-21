@@ -79,56 +79,78 @@ firmware. After training, perform legacy HDF5 export, uint8 TFLite
 quantization, NNPA compilation, then update and validate the board artifact.
 The current embedded 19,392-byte NNPA remains the old three-class model.
 
-## Combine, rename, and index all 182 frames by scene
+## Combined 182-frame scene dataset
 
-After placing the additional 111-image four-class ZIP in
-`datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111_4class.zip`,
-run the scene/frame reorganization tool from the repository root:
+The combined archive is:
 
-```bash
-python3 projects/own_dataset_person_count_cnn/training/reorganize_combined_scene_dataset.py
-```
+`datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip`
 
-It reads the existing 71-image archive and the additional 111-image archive,
-then creates
-`datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip`.
+It combines the 71 labeled images from the existing set and all 111 new
+outdoor photographs. It contains 182 160x120 grayscale PNGs:
 
-The output has separate folders `0_person` through `4_person` and names such
-as `2_person/I2_001_003.png`:
-- `I2`: two people in the frame
-- `001`: source-time scene group 001
-- `003`: third frame within that group
+| Visible people | Images |
+|---|---:|
+| 0 | 1 (retained, skipped by the four-class trainer) |
+| 1 | 72 |
+| 2 | 66 |
+| 3 | 29 |
+| 4 | 14 |
 
-Scene groups are derived from the original WhatsApp timestamp/source_group
-metadata (six legacy source groups and fourteen new source groups are expected).
-Frames keep manifest order within a group. The source timestamps have
-one-second precision, and filename collision suffixes do not prove sub-second
-capture order, so frame order is a reproducible ordering, not guaranteed video
-chronology.
+The current trainer supports exact count classes 1, 2, 3 and 4. It skips
+the one 0-person frame rather than assigning it to another class.
 
-The output includes:
-- `manifest.csv`: source filename, class, scene/frame IDs, output filename and SHA-256
-- `scene_directions.csv`: entry side, exit side and movement direction per scene
-- `scene_summary.csv`: frame totals and class counts for each scene
+### Folder and naming structure
 
-The new still-photo collection shows people entering/leaving from both left
-and right across the collection; this is recorded as coarse bidirectional
-collection-level movement. It is not a person-ID track. Legacy scene directions
-remain UNKNOWN until manually reviewed. Exact individual paths require
-ordered video or per-person track annotations.
+Each image is stored under its own count folder, for example
+`2_person/I2_001_003.png`:
 
-The builder validates all source images are already 160x120 and refuses to
-stretch, crop or silently resize them. It leaves the two source ZIPs untouched.
+- `I2` = two visible people
+- `001` = source scene group 001
+- `003` = third frame in the scene, regardless of the class folder
 
-Train the four-class model on the combined archive (the zero-person image is
-kept but skipped by the trainer):
+Frame numbering restarts at 001 in each scene and continues across the
+class folders. Original timestamp groups are preserved, so scene lengths
+vary from 1 to 15 frames. They are not padded or forced to exactly eight
+frames. Within a scene the order is unsuffixed filename first, then natural
+numeric suffix order `(1)`, `(2)`, ... `(10)`. This is reproducible but
+does not guarantee sub-second chronology.
+
+### Entry / exit direction fields
+
+The ZIP includes a `manifest.csv` with entry side, exit side, movement
+direction and annotation status for every frame, plus `scene_directions.csv`
+and `scene_summary.csv`.
+
+Six longer new sequences (15.08.18–15.08.23) visibly show movement in both
+directions; their scene-level entry and exit sides are `LEFT_AND_RIGHT`.
+Short new groups and the legacy scenes are marked `UNKNOWN` when the
+available stills do not establish direction reliably. These are not per-person
+tracks: no persistent person IDs, boxes, or exact trajectories are annotated.
+
+### Check and train from the combined archive
+
+From the repository root:
 
 ```bash
 python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
   --archive datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip \
   --output-dir projects/own_dataset_person_count_cnn/models/four_class_scene_experiment \
+  --check-only
+
+python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
+  --archive datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip \
+  --output-dir projects/own_dataset_person_count_cnn/models/four_class_scene_experiment \
   --epochs 40
 ```
+
+The validation split is currently image-level rather than source-scene-held-out.
+Because frames from one source scene are related, validation may be optimistic;
+use a held-out collection of separate scenes before claiming generalization.
+
+The existing board firmware still embeds the historical three-class NNPA.
+A four-class host model needs H5 export, uint8 TFLite quantization, NNPA
+compilation and new board-side output parsing before four-class board
+inference can be claimed.
 
 ## Legacy Keras export
 
