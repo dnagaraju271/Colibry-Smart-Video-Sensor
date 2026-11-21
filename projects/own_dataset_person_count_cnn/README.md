@@ -53,6 +53,65 @@ quantized, compiled to NNPA, and verified before changing board output parsing
 or claiming four-class inference. Do not use the old NNPA for 4-person
 classification.
 
+## Combined 182-frame scene dataset
+
+The reorganization utility is
+`training/reorganize_combined_scene_dataset.py`. It combines the existing
+71-image ZIP with the additional 111-image four-class ZIP into
+`datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip`.
+
+The output folder structure is `0_person/` through `4_person/`; all supported
+files are 160x120 grayscale PNG. Names use
+`I{count}_{scene}_{frame}.png`, for example
+`2_person/I2_001_003.png`. The first component indicates visible people, the
+second is the scene group, and the third is the frame number within that scene.
+Frame numbers restart at 001 for each scene.
+
+The scene grouping uses the original WhatsApp timestamp/source_group metadata:
+the existing dataset has six source-time groups and the new collection has
+fourteen. Within each group, manifest order is preserved. These timestamps have
+one-second precision; collision suffixes do not guarantee the true order of
+frames within that second.
+
+The combined ZIP carries three CSV files:
+- `manifest.csv` — source, count label, scene/frame IDs, output path and hash
+- `scene_directions.csv` — entry side, exit side and direction per scene
+- `scene_summary.csv` — number of frames and class distribution per scene
+
+Across the new outdoor still-photo collection, pedestrians are visible
+entering and leaving the camera views from both left and right sides. This is
+recorded as a coarse bidirectional collection-level observation, not a
+persistent person-ID track. The legacy 71-image scenes have direction marked
+UNKNOWN pending review. Stills alone do not establish exact per-person paths.
+
+The combined archive contains 182 photos: 72 one-person, 66 two-person,
+29 three-person, 14 four-person and one zero-person image. The zero-person
+image is retained under `0_person` but skipped by the current four-class
+trainer. The resulting training set has 181 labeled images.
+
+To build it from the repository root:
+
+```bash
+python3 projects/own_dataset_person_count_cnn/training/reorganize_combined_scene_dataset.py
+```
+
+Then check and train the four-class model with:
+
+```bash
+python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
+  --archive datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip \
+  --output-dir projects/own_dataset_person_count_cnn/models/four_class_scene_experiment \
+  --check-only
+
+python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
+  --archive datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip \
+  --output-dir projects/own_dataset_person_count_cnn/models/four_class_scene_experiment \
+  --epochs 40
+```
+
+The new four-class output is not yet embedded in the Colibry firmware. The
+current camera firmware still contains the historical three-class NNPA model.
+
 ## Existing three-class model baseline (historical)
 
 The following specifications describe the previously trained three-class model, not the pending four-class retrain.
