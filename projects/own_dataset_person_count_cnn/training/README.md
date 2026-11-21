@@ -110,7 +110,7 @@ does not update the board model. A new four-class model must be exported,
 quantized, compiled to NNPA and integrated into the firmware before the
 Colibry can output four-person predictions.
  
-## Four-class dataset and training
+## Earlier additional-only 111-image archive (historical input)
 
 The additional archive is:
 `datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111_4class.zip`
@@ -169,7 +169,7 @@ firmware. After training, perform legacy HDF5 export, uint8 TFLite
 quantization, NNPA compilation, then update and validate the board artifact.
 The current embedded 19,392-byte NNPA remains the old three-class model.
 
-## Combined 182-frame scene dataset
+## Earlier 182-entry combined archive (superseded; contains exact duplicates)
 
 The combined archive is:
 
