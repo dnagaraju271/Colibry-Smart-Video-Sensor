@@ -20,47 +20,64 @@ Defaults:
 
 The validation split is image-level stratified, not source-group held out. The six source groups overlap between train/validation; in fact all four 3-person images originate from one group. Treat validation metrics as preliminary only.
 
-## Add the 20 November 2026 outdoor collection
+## Four-class dataset and training
 
 The additional archive is:
-`datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111.zip`
+`datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111_4class.zip`
 
-It contains 111 manually counted outdoor photographs processed to 160x120
-8-bit grayscale PNG using Pillow Lanczos resizing. The collection includes:
+It contains 111 manually reviewed outdoor photographs processed to 160x120
+8-bit grayscale PNG using Pillow Lanczos resizing. The manifest maps every
+processed image to its source filename and manually counted visible people.
 
-| Visible people | Images | Training handling |
+| Visible people | New images | Training handling |
 |---|---:|---|
-| 1 person | 13 | Included |
-| 2 people | 58 | Included |
-| 3 people | 25 | Included |
-| 0 people | 1 | Retained in pending folder; skipped |
-| 4 people | 14 | Retained in pending folder; skipped |
+| 0 | 1 | Retained in pending folder; skipped |
+| 1 | 13 | Included |
+| 2 | 58 | Included |
+| 3 | 25 | Included |
+| 4 | 14 | Included |
 
-Only the existing model classes 1/2/3 are used for training. The model has no
-zero-person or four-person class. Labels are recorded in the archive manifest.
-These are near-consecutive frames from 14 source-time groups, not 111
-independent scenes; image-level validation can be optimistic.
+The existing 71-image archive contributes 59 / 8 / 4 examples for classes
+1 / 2 / 3. Combined with the new archive, the training-eligible distribution
+is **72 / 66 / 29 / 14** for 1 / 2 / 3 / 4 people (**181 images total**).
+The one zero-person image remains pending. There is no five-or-more class.
 
-To check the combined original 71-image archive and the new collection:
+The 14 four-person images come from six source-time groups and include
+near-consecutive frames. They are not 14 independent scenes. The current
+split is image-level stratified rather than source-group-held-out, so
+validation metrics may be optimistic. Use a genuinely separate scene-level
+test set before claiming generalization.
+
+### Check and train the combined four-class model
+
+From the repository root, first inspect the archive and class distributions:
 
 ```bash
 python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
   --check-only \
-  --additional-archive datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111.zip
+  --additional-archive datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111_4class.zip
 ```
 
-To train on the combined eligible images:
+Train into a separate four-class experiment directory so existing model
+artifacts are not overwritten:
 
 ```bash
 python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
   --epochs 40 \
-  --additional-archive datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111.zip
+  --additional-archive datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111_4class.zip \
+  --output-dir projects/own_dataset_person_count_cnn/models/four_class_experiment
 ```
 
-With the existing 71 labeled images, this adds 96 eligible examples and gives
-a combined class distribution of 72 one-person, 66 two-person, and 29
-three-person images. The one zero-person and fourteen four-person examples are
-preserved but excluded from this three-class run.
+The updated model keeps the same 40x30x1 grayscale input and two trainable
+layers (Conv2D and Dense), but the Dense layer now emits **four logits**
+for `1_person`, `2_person`, `3_person`, and `4_person`. The 4-person
+class is still small (14 examples); class weighting is applied, but it cannot
+replace collecting more independent four-person scenes.
+
+The four-class host model is not yet the model embedded in the existing board
+firmware. After training, perform legacy HDF5 export, uint8 TFLite
+quantization, NNPA compilation, then update and validate the board artifact.
+The current embedded 19,392-byte NNPA remains the old three-class model.
 
 ## Legacy Keras export
 
