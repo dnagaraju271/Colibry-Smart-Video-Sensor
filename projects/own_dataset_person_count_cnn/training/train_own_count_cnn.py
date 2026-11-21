@@ -23,8 +23,8 @@ from PIL import Image
 from sklearn.model_selection import StratifiedGroupKFold
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_ARCHIVE = ROOT / "datasets/mobile_160x120/DATASET185_160x120_Grayscale_Scene_Organized.zip"
-DEFAULT_OUTPUT = ROOT / "projects/own_dataset_person_count_cnn/models/dataset185_four_class_group_split"
+DEFAULT_ARCHIVE = ROOT / "datasets/mobile_160x120/OWN_Dataset_71plus111_Deduplicated_Scene_Frames_160x120.zip"
+DEFAULT_OUTPUT = ROOT / "projects/own_dataset_person_count_cnn/models/four_class_71plus111_group_split"
 CLASS_NAMES = ["1_person", "2_person", "3_person", "4_person"]
 CLASS_TO_ID = {name: index for index, name in enumerate(CLASS_NAMES)}
 IMAGE_WIDTH, IMAGE_HEIGHT, CHANNELS = 40, 30, 1
