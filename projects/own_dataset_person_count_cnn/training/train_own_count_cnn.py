@@ -405,8 +405,68 @@ def main() -> None:
 
     keras_path = output_dir / "own_count_cnn.keras"
     tflite_path = output_dir / "own_count_cnn.tflite"
+    uint8_tflite_path = output_dir / "own_count_cnn_uint8.tflite"
     model.save(keras_path)
     tflite_path.write_bytes(tf.lite.TFLiteConverter.from_keras_model(model).convert())
+
+    # Produce fully quantized uint8 I/O for the existing Colibry NNPA input path.
+    # Calibration uses only real, preprocessed training frames from this run.
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+    def representative_dataset():
+        for sample in x_train:
+            yield [sample[np.newaxis, ...].astype(np.float32)]
+
+    converter.representative_dataset = representative_dataset
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    converter.inference_input_type = tf.uint8
+    converter.inference_output_type = tf.uint8
+    quantized_model = converter.convert()
+    uint8_tflite_path.write_bytes(quantized_model)
+
+    # Validate quantized tensor dimensions, uint8 interfaces and held-out
+    # predictions before presenting this file for NNPA compilation.
+    interpreter = tf.lite.Interpreter(model_content=quantized_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    if len(input_details) != 1 or len(output_details) != 1:
+        raise RuntimeError("Expected exactly one TFLite input and one output tensor")
+    input_detail, output_detail = input_details[0], output_details[0]
+    if tuple(input_detail["shape"]) != (1, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS):
+        raise RuntimeError(f"Unexpected uint8 TFLite input shape: {input_detail['shape']}")
+    if tuple(output_detail["shape"]) != (1, len(CLASS_NAMES)):
+        raise RuntimeError(f"Unexpected uint8 TFLite output shape: {output_detail['shape']}")
+    if input_detail["dtype"] != np.uint8 or output_detail["dtype"] != np.uint8:
+        raise RuntimeError(
+            f"Expected uint8 TFLite interfaces, got "
+            f"{input_detail['dtype']} input / {output_detail['dtype']} output"
+        )
+    input_scale, input_zero_point = input_detail["quantization"]
+    output_scale, output_zero_point = output_detail["quantization"]
+    if input_scale <= 0 or output_scale <= 0:
+        raise RuntimeError("TFLite input/output quantization scales must be positive")
+
+    quantized_val_logits: list[np.ndarray] = []
+    for sample in x_val:
+        quantized_input = np.clip(
+            np.rint(sample[np.newaxis, ...] / input_scale + input_zero_point),
+            0,
+            255,
+        ).astype(np.uint8)
+        interpreter.set_tensor(input_detail["index"], quantized_input)
+        interpreter.invoke()
+        quantized_output = interpreter.get_tensor(output_detail["index"])
+        dequantized_output = (
+            quantized_output.astype(np.float32) - output_zero_point
+        ) * output_scale
+        quantized_val_logits.append(dequantized_output[0])
+    quantized_validation_results = evaluate_classes(
+        y_val, np.stack(quantized_val_logits, axis=0)
+    )
 
     report = {
         **summary,
@@ -421,6 +481,18 @@ def main() -> None:
             "keras_model": str(keras_path),
             "tflite_model": str(tflite_path),
             "tflite_bytes": tflite_path.stat().st_size,
+            "uint8_tflite_model": str(uint8_tflite_path),
+            "uint8_tflite_bytes": uint8_tflite_path.stat().st_size,
+            "uint8_input_shape": list(input_detail["shape"]),
+            "uint8_output_shape": list(output_detail["shape"]),
+            "uint8_input_quantization": {
+                "scale": float(input_scale), "zero_point": int(input_zero_point)
+            },
+            "uint8_output_quantization": {
+                "scale": float(output_scale), "zero_point": int(output_zero_point)
+            },
+            "uint8_validation_accuracy": quantized_validation_results["accuracy"],
+            "uint8_validation_results": quantized_validation_results,
             "best_weights": str(best_weights),
         },
         "validation_images": [record["output_file"] for record in val_records],
@@ -437,6 +509,13 @@ def main() -> None:
         "per_class": validation_results["per_class"],
         "keras_model": str(keras_path),
         "tflite_model": str(tflite_path),
+        "uint8_tflite_model": str(uint8_tflite_path),
+        "uint8_tflite_bytes": report["artifacts"]["uint8_tflite_bytes"],
+        "uint8_input_shape": report["artifacts"]["uint8_input_shape"],
+        "uint8_output_shape": report["artifacts"]["uint8_output_shape"],
+        "uint8_input_quantization": report["artifacts"]["uint8_input_quantization"],
+        "uint8_output_quantization": report["artifacts"]["uint8_output_quantization"],
+        "uint8_validation_accuracy": report["artifacts"]["uint8_validation_accuracy"],
         "report": str(report_path),
         "tflite_bytes": report["artifacts"]["tflite_bytes"],
     }, indent=2))
