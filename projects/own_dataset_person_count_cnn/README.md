@@ -1,5 +1,36 @@
 # Own-dataset person-count CNN
 
+## Latest standalone training collection — DATASET185 (2026-11-21)
+
+The latest 185-image outdoor collection is stored locally as
+`datasets/mobile_160x120/DATASET185_160x120_Grayscale_Scene_Organized.zip`.
+It contains 160x120 8-bit grayscale PNGs arranged by visible-person count and
+source scene.
+
+| Visible people | Images | Current four-class training |
+|---|---:|---|
+| 0 | 5 | Preserved, skipped |
+| 1 | 75 | Included |
+| 2 | 63 | Included |
+| 3 | 27 | Included |
+| 4 | 15 | Included |
+
+The current model trains on 180 images for exact counts 1–4. The five
+zero-person samples are not part of the existing four-output classifier.
+The host trainer downsamples 160x120 to the Colibry model input 40x30x1,
+uses class weights, and holds out complete source scenes for validation.
+It retains exactly two trainable layers (Conv2D and Dense). Run instructions
+and the split details are in `training/README.md`.
+
+**Deployment is not complete:** the embedded NNPA in the current camera
+firmware is still the previous three-class model. The latest live-camera
+diagnostic also failed the ISP scaler PSB check, and its captured values
+were only 0–5. A new four-class NNPA must be trained/exported/compiled, and
+the camera frame pipeline must produce a valid image before live predictions
+can be trusted. Do not use or overwrite the old NNPA/flash backups as part
+of this host-training step.
+
+
 This is the dedicated project for the team's own 3-class grayscale person-count CNN and its Colibry NNPA inference demonstration.
 
 ## Project organization
