@@ -55,47 +55,77 @@ classification.
 
 ## Combined 182-frame scene dataset
 
-The reorganization utility is
-`training/reorganize_combined_scene_dataset.py`. It combines the existing
-71-image ZIP with the additional 111-image four-class ZIP into
-`datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip`.
+The reorganized dataset combines the original **71 labeled images** and all
+**111 new outdoor photographs** into one archive:
 
-The output folder structure is `0_person/` through `4_person/`; all supported
-files are 160x120 grayscale PNG. Names use
-`I{count}_{scene}_{frame}.png`, for example
-`2_person/I2_001_003.png`. The first component indicates visible people, the
-second is the scene group, and the third is the frame number within that scene.
-Frame numbers restart at 001 for each scene.
+`datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip`
 
-The scene grouping uses the original WhatsApp timestamp/source_group metadata:
-the existing dataset has six source-time groups and the new collection has
-fourteen. Within each group, manifest order is preserved. These timestamps have
-one-second precision; collision suffixes do not guarantee the true order of
-frames within that second.
+It contains 182 grayscale PNG images at 160x120, in five folders:
+`0_person/`, `1_person/`, `2_person/`, `3_person/`, and `4_person/`.
 
-The combined ZIP carries three CSV files:
-- `manifest.csv` — source, count label, scene/frame IDs, output path and hash
-- `scene_directions.csv` — entry side, exit side and direction per scene
-- `scene_summary.csv` — number of frames and class distribution per scene
+| Visible people | Images | Use |
+|---|---:|---|
+| 0 | 1 | Preserved; excluded from the current four-output model |
+| 1 | 72 | Four-class training |
+| 2 | 66 | Four-class training |
+| 3 | 29 | Four-class training |
+| 4 | 14 | Four-class training |
 
-Across the new outdoor still-photo collection, pedestrians are visible
-entering and leaving the camera views from both left and right sides. This is
-recorded as a coarse bidirectional collection-level observation, not a
-persistent person-ID track. The legacy 71-image scenes have direction marked
-UNKNOWN pending review. Stills alone do not establish exact per-person paths.
+The four-class training set therefore has 181 images. The 0-person photo is
+retained rather than being mislabeled as a one-person sample.
 
-The combined archive contains 182 photos: 72 one-person, 66 two-person,
-29 three-person, 14 four-person and one zero-person image. The zero-person
-image is retained under `0_person` but skipped by the current four-class
-trainer. The resulting training set has 181 labeled images.
+### Scene and filename convention
 
-To build it from the repository root:
+File names use `I{count}_{scene}_{frame}.png`, with each frame stored in its
+matching class folder. For example:
 
-```bash
-python3 projects/own_dataset_person_count_cnn/training/reorganize_combined_scene_dataset.py
-```
+- `1_person/I1_001_001.png` — one person, scene 001, frame 001
+- `1_person/I1_001_002.png` — one person, scene 001, frame 002
+- `2_person/I2_001_003.png` — two people, scene 001, frame 003
+- `3_person/I3_001_005.png` — three people, scene 001, frame 005
+- `4_person/I4_001_008.png` — four people, scene 001, frame 008
 
-Then check and train the four-class model with:
+The scene ID follows the original WhatsApp timestamp/source group. Frame IDs
+restart at 001 for each scene and increase across all class folders in that
+scene. Frames are ordered by natural numeric filename suffix: the unsuffixed
+file first, then `(1)`, `(2)`, ... `(10)`. This is a reproducible ordering,
+but the WhatsApp collision suffix does not prove exact capture chronology.
+
+The 20 original source groups contain a variable number of frames (1–15).
+They are kept intact; groups are not padded or arbitrarily split to make every
+scene exactly eight frames. Eight is an example sequence length, not a fixed
+scene-size rule.
+
+### Entry and exit direction
+
+The archive includes `scene_directions.csv` and per-frame direction fields in
+`manifest.csv`:
+
+- The six longer reviewed new outdoor sequences (15.08.18–15.08.23) show
+  people crossing in both directions. Their scene-level entry and exit sides
+  are marked `LEFT_AND_RIGHT`.
+- Short new groups and all six legacy groups are marked `UNKNOWN` where the
+  still sequence does not establish a reliable entry-to-exit direction.
+
+These are scene-level observations only. The data does not contain persistent
+person IDs, bounding boxes, or per-person trajectories. Exact individual
+movement paths would require frame-by-frame track annotation or video.
+
+The ZIP also includes:
+- `manifest.csv` — source filename, count, scene/frame ID, class folder,
+  output name, entry/exit labels, ordering basis and SHA-256
+- `scene_directions.csv` — one row per source scene
+- `scene_summary.csv` — per-scene frame count and class distribution
+
+The archive was verified to contain 182 images; every PNG is 160x120, grayscale
+mode L, and matches its manifest filename and SHA-256. ZIP integrity passes.
+
+### Check and train the four-class model
+
+The current host trainer has four output classes, but the NNPA file currently
+embedded in the camera firmware is still the old three-class bitstream.
+
+From the repository root:
 
 ```bash
 python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
@@ -109,8 +139,9 @@ python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
   --epochs 40
 ```
 
-The new four-class output is not yet embedded in the Colibry firmware. The
-current camera firmware still contains the historical three-class NNPA model.
+Do not use the old three-class NNPA bitstream to claim four-person classification.
+A newly trained four-class model must be exported, quantized, compiled and
+validated on the board before replacing the current artifact.
 
 ## Existing three-class model baseline (historical)
 
