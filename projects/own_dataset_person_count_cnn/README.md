@@ -1,34 +1,77 @@
 # Own-dataset person-count CNN
 
-## Latest standalone training collection — DATASET185 (2026-11-21)
+## Current dataset — deduplicated 71 + 111 walking scenes (2026-11-21)
 
-The latest 185-image outdoor collection is stored locally as
-`datasets/mobile_160x120/DATASET185_160x120_Grayscale_Scene_Organized.zip`.
-It contains 160x120 8-bit grayscale PNGs arranged by visible-person count and
-source scene.
+Source collections: 71 legacy processed images + 111 newer outdoor photos.
+The 71 older frames are all exact pixel duplicates of images already in the
+newer collection after 160x120 grayscale normalization. They contain only
+three distinct pixel patterns, all present in the newer 111. Therefore the
+deduplicated union contains **111 unique images**, not 182. The newer
+timestamped frames are retained to preserve scene order; all 71 removed
+legacy entries are mapped in `duplicates_removed.csv`.
 
-| Visible people | Images | Current four-class training |
+Current archive:
+
+`datasets/mobile_160x120/OWN_Dataset_71plus111_Deduplicated_Scene_Frames_160x120.zip`
+
+| Visible people | Unique images | Use |
 |---|---:|---|
-| 0 | 5 | Preserved, skipped |
-| 1 | 75 | Included |
-| 2 | 63 | Included |
-| 3 | 27 | Included |
-| 4 | 15 | Included |
+| 0 | 1 | Preserved in `0_person`, skipped by four-output model |
+| 1 | 13 | Four-class training |
+| 2 | 58 | Four-class training |
+| 3 | 25 | Four-class training |
+| 4 | 14 | Four-class training |
+| **Total** | **111** | **110 training examples (classes 1–4)** |
 
-The current model trains on 180 images for exact counts 1–4. The five
-zero-person samples are not part of the existing four-output classifier.
-The host trainer downsamples 160x120 to the Colibry model input 40x30x1,
-uses class weights, and holds out complete source scenes for validation.
-It retains exactly two trainable layers (Conv2D and Dense). Run instructions
-and the split details are in `training/README.md`.
+The fourth class is explicitly included. The model supports exact count classes
+1, 2, 3, and 4; the single empty-scene image is preserved but not used as a
+negative example.
 
-**Deployment is not complete:** the embedded NNPA in the current camera
-firmware is still the previous three-class model. The latest live-camera
-diagnostic also failed the ISP scaler PSB check, and its captured values
-were only 0–5. A new four-class NNPA must be trained/exported/compiled, and
-the camera frame pipeline must produce a valid image before live predictions
-can be trusted. Do not use or overwrite the old NNPA/flash backups as part
-of this host-training step.
+All images are 160x120 8-bit grayscale PNG. The class folders are
+`0_person/`, `1_person/`, `2_person/`, `3_person/`, and `4_person/`.
+
+### Walking-scene naming convention
+
+Each image is stored in its matching person-count folder and named
+`I{count}_{scene}_{frame}.png`. Frame numbering is shared across all class
+folders in the same scene. Example:
+
+- `2_person/I2_001_001.png`
+- `1_person/I1_001_002.png`
+- `2_person/I2_001_003.png`
+- `1_person/I1_001_004.png`
+
+The scene ID is derived from the source WhatsApp timestamp. There are 14
+timestamped scenes; the original number of frames is retained (1–15 per scene),
+not padded to eight. Within a timestamp group, filenames are ordered by
+numeric collision suffix (base, then (1), (2), etc.). This ordering is
+reproducible but cannot prove exact sub-second chronology.
+
+### Direction metadata
+
+The archive contains `scene_directions.csv` and the manifest includes
+scene-level entry/exit fields. Six longer visually reviewed scenes
+(15.08.18–15.08.23) are marked `LEFT_AND_RIGHT` for both entry and exit,
+with `BIDIRECTIONAL` movement. The other eight shorter scenes remain
+`UNKNOWN` because the stills do not establish a reliable path.
+
+These are scene-level observations, not person tracking. There are no
+persistent person IDs, bounding boxes, or per-person trajectories.
+
+### Training configuration
+
+The updated host trainer reads this archive by default, skips the single
+zero-person image, applies class weights, and uses a source-scene-held-out
+`StratifiedGroupKFold` validation split. The CNN retains exactly two trainable
+layers (Conv2D and Dense) and emits four logits. See `training/README.md`
+for the check and training commands.
+
+**Board limitation:** the current camera firmware still embeds the previous
+three-class NNPA. The new four-class model must be trained, exported,
+quantized, compiled, and integrated into firmware before four-person board
+predictions are possible. The most recent camera capture also failed the ISP
+scaler PSB validation; live frame data must be corrected and validated before
+trustworthy camera inference.
 
 
 This is the dedicated project for the team's own 3-class grayscale person-count CNN and its Colibry NNPA inference demonstration.
@@ -84,95 +127,12 @@ quantized, compiled to NNPA, and verified before changing board output parsing
 or claiming four-class inference. Do not use the old NNPA for 4-person
 classification.
 
-## Combined 182-frame scene dataset
+## Previous 182-entry collection (superseded)
 
-The reorganized dataset combines the original **71 labeled images** and all
-**111 new outdoor photographs** into one archive:
-
-`datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip`
-
-It contains 182 grayscale PNG images at 160x120, in five folders:
-`0_person/`, `1_person/`, `2_person/`, `3_person/`, and `4_person/`.
-
-| Visible people | Images | Use |
-|---|---:|---|
-| 0 | 1 | Preserved; excluded from the current four-output model |
-| 1 | 72 | Four-class training |
-| 2 | 66 | Four-class training |
-| 3 | 29 | Four-class training |
-| 4 | 14 | Four-class training |
-
-The four-class training set therefore has 181 images. The 0-person photo is
-retained rather than being mislabeled as a one-person sample.
-
-### Scene and filename convention
-
-File names use `I{count}_{scene}_{frame}.png`, with each frame stored in its
-matching class folder. For example:
-
-- `1_person/I1_001_001.png` — one person, scene 001, frame 001
-- `1_person/I1_001_002.png` — one person, scene 001, frame 002
-- `2_person/I2_001_003.png` — two people, scene 001, frame 003
-- `3_person/I3_001_005.png` — three people, scene 001, frame 005
-- `4_person/I4_001_008.png` — four people, scene 001, frame 008
-
-The scene ID follows the original WhatsApp timestamp/source group. Frame IDs
-restart at 001 for each scene and increase across all class folders in that
-scene. Frames are ordered by natural numeric filename suffix: the unsuffixed
-file first, then `(1)`, `(2)`, ... `(10)`. This is a reproducible ordering,
-but the WhatsApp collision suffix does not prove exact capture chronology.
-
-The 20 original source groups contain a variable number of frames (1–15).
-They are kept intact; groups are not padded or arbitrarily split to make every
-scene exactly eight frames. Eight is an example sequence length, not a fixed
-scene-size rule.
-
-### Entry and exit direction
-
-The archive includes `scene_directions.csv` and per-frame direction fields in
-`manifest.csv`:
-
-- The six longer reviewed new outdoor sequences (15.08.18–15.08.23) show
-  people crossing in both directions. Their scene-level entry and exit sides
-  are marked `LEFT_AND_RIGHT`.
-- Short new groups and all six legacy groups are marked `UNKNOWN` where the
-  still sequence does not establish a reliable entry-to-exit direction.
-
-These are scene-level observations only. The data does not contain persistent
-person IDs, bounding boxes, or per-person trajectories. Exact individual
-movement paths would require frame-by-frame track annotation or video.
-
-The ZIP also includes:
-- `manifest.csv` — source filename, count, scene/frame ID, class folder,
-  output name, entry/exit labels, ordering basis and SHA-256
-- `scene_directions.csv` — one row per source scene
-- `scene_summary.csv` — per-scene frame count and class distribution
-
-The archive was verified to contain 182 images; every PNG is 160x120, grayscale
-mode L, and matches its manifest filename and SHA-256. ZIP integrity passes.
-
-### Check and train the four-class model
-
-The current host trainer has four output classes, but the NNPA file currently
-embedded in the camera firmware is still the old three-class bitstream.
-
-From the repository root:
-
-```bash
-python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
-  --archive datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip \
-  --output-dir projects/own_dataset_person_count_cnn/models/four_class_scene_experiment \
-  --check-only
-
-python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
-  --archive datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip \
-  --output-dir projects/own_dataset_person_count_cnn/models/four_class_scene_experiment \
-  --epochs 40
-```
-
-Do not use the old three-class NNPA bitstream to claim four-person classification.
-A newly trained four-class model must be exported, quantized, compiled and
-validated on the board before replacing the current artifact.
+`OWN_Dataset_182_Scene_Frames_160x120.zip` was an earlier combined archive
+containing 71 legacy entries and 111 newer photographs. It retained exact
+duplicate legacy images. It is superseded by the deduplicated 111-image
+archive documented above and must not be used for the current training run.
 
 ## Existing three-class model baseline (historical)
 
