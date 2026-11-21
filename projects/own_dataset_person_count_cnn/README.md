@@ -74,18 +74,18 @@ scaler PSB validation; live frame data must be corrected and validated before
 trustworthy camera inference.
 
 
-This is the dedicated project for the team's own 3-class grayscale person-count CNN and its Colibry NNPA inference demonstration.
+This is the dedicated project for the team's own grayscale person-count CNN, four-class host training, and Colibry NNPA inference demonstration. The board firmware still embeds a historical three-class NNPA until the new four-class model is compiled and integrated.
 
 ## Project organization
 
 - `training/` — host-side TensorFlow training and legacy Keras compatibility export.
 - `model_export/` — INT8 TFLite / Colibry NNPA artifact notes and hashes.
 - `board_firmware/` — EvalboardTiny firmware for SRAM-only NNPA inference tests.
-- Dataset archive: `datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_processed_only.zip`.
+- Current dataset archive: `datasets/mobile_160x120/OWN_Dataset_71plus111_Deduplicated_Scene_Frames_160x120.zip`.
 
 The separate `simple_person_cnn/` folder remains the older binary `person` / `no_person` CNN exercise. The professor assignment index remains in `experiments/professor_demo/` and links to this project for Task 2.
 
-## Dataset currently available
+## Historical 71-image baseline (superseded as the training dataset)
 
 | Class | Labeled images |
 |---|---:|
@@ -96,7 +96,7 @@ The separate `simple_person_cnn/` folder remains the older binary `person` / `no
 
 The archive also contains three zero-person originals in `pending_for_later_originals`; those are not included in the current 3-class training. All four 3-person images come from one source group, and the earlier train/validation split shared five source groups. Current metrics are preliminary and optimistic.
 
-## Additional outdoor collection (2026-11-20) — four-class revision
+## Additional outdoor collection (2026-11-20) — now incorporated in the current deduplicated dataset
 
 The additional archive is
 `datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111_4class.zip`.
@@ -127,7 +127,7 @@ quantized, compiled to NNPA, and verified before changing board output parsing
 or claiming four-class inference. Do not use the old NNPA for 4-person
 classification.
 
-## Previous 182-entry collection (superseded)
+## Previous 182-entry collection (superseded; contains duplicate legacy frames)
 
 `OWN_Dataset_182_Scene_Frames_160x120.zip` was an earlier combined archive
 containing 71 legacy entries and 111 newer photographs. It retained exact
