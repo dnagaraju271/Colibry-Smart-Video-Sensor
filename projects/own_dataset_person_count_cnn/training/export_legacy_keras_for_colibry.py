@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SOURCE = (
     ROOT / "projects/own_dataset_person_count_cnn/models/four_class_71plus111_group_split/own_count_cnn.keras"
 )
-DEFAULT_OUTPUT = Path.home() / "models/edgeguard_own_count/own_count_cnn_legacy.h5"
+DEFAULT_OUTPUT = Path.home() / "models/edgeguard_own_count/dataset_71plus111/own_count_cnn_legacy.h5"
 EXPECTED_INPUT = (None, 30, 40, 1)
 EXPECTED_OUTPUT = (None, 4)
 EXPECTED_TRAINABLE_LAYERS = ["conv2d", "class_logits"]
