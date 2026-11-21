@@ -79,6 +79,57 @@ firmware. After training, perform legacy HDF5 export, uint8 TFLite
 quantization, NNPA compilation, then update and validate the board artifact.
 The current embedded 19,392-byte NNPA remains the old three-class model.
 
+## Combine, rename, and index all 182 frames by scene
+
+After placing the additional 111-image four-class ZIP in
+`datasets/mobile_160x120/OWN_Dataset_160x120_Grayscale_additional_111_4class.zip`,
+run the scene/frame reorganization tool from the repository root:
+
+```bash
+python3 projects/own_dataset_person_count_cnn/training/reorganize_combined_scene_dataset.py
+```
+
+It reads the existing 71-image archive and the additional 111-image archive,
+then creates
+`datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip`.
+
+The output has separate folders `0_person` through `4_person` and names such
+as `2_person/I2_001_003.png`:
+- `I2`: two people in the frame
+- `001`: source-time scene group 001
+- `003`: third frame within that group
+
+Scene groups are derived from the original WhatsApp timestamp/source_group
+metadata (six legacy source groups and fourteen new source groups are expected).
+Frames keep manifest order within a group. The source timestamps have
+one-second precision, and filename collision suffixes do not prove sub-second
+capture order, so frame order is a reproducible ordering, not guaranteed video
+chronology.
+
+The output includes:
+- `manifest.csv`: source filename, class, scene/frame IDs, output filename and SHA-256
+- `scene_directions.csv`: entry side, exit side and movement direction per scene
+- `scene_summary.csv`: frame totals and class counts for each scene
+
+The new still-photo collection shows people entering/leaving from both left
+and right across the collection; this is recorded as coarse bidirectional
+collection-level movement. It is not a person-ID track. Legacy scene directions
+remain UNKNOWN until manually reviewed. Exact individual paths require
+ordered video or per-person track annotations.
+
+The builder validates all source images are already 160x120 and refuses to
+stretch, crop or silently resize them. It leaves the two source ZIPs untouched.
+
+Train the four-class model on the combined archive (the zero-person image is
+kept but skipped by the trainer):
+
+```bash
+python3 projects/own_dataset_person_count_cnn/training/train_own_count_cnn.py \
+  --archive datasets/mobile_160x120/OWN_Dataset_182_Scene_Frames_160x120.zip \
+  --output-dir projects/own_dataset_person_count_cnn/models/four_class_scene_experiment \
+  --epochs 40
+```
+
 ## Legacy Keras export
 
 Use the compiler-compatible exporter after training:
