@@ -1,5 +1,29 @@
 # PAG7920LT live camera capture and inference
 
+## Current blocker — 2026-11-21
+
+The latest physical-board UART run did **not** produce a valid camera frame or
+a trustworthy prediction:
+
+- `NNPA_DATA_LOADED: 1200 bytes` was reported, but this alone does not prove
+  that the input pixels are valid.
+- `ISP_INT_STATUS: 0x00000028`, with `ISP_SCALER_PSB_ERR=1`.
+- `CAMIF_INT_STATUS: 0x0000003c`, with `CAMIF_DATA_FIFO_OVERFLOW=1`.
+- The reconstructed 40x30 frame had pixel values only from 0 to 5.
+- Firmware ended with `CAMERA_CAPTURE_RESULT: FAIL (5)`.
+
+Do not bypass the ISP error check or treat this frame as a valid test image.
+Resolve the camera/ISP stream issue and visually verify a frame before
+enabling live inference.
+
+The firmware source in this directory also still embeds the historical
+three-class NNPA and has `CLASS_COUNT=3`. It cannot report the new
+four-class 1–4 person model. The host model must first be trained, exported
+and compiled to a new NNPA; then the firmware model header, class count and
+output parser must be updated together. Preserve the existing NNPA and flash
+backups; do not program external flash for this SRAM test.
+
+
 ## Current firmware mode — 2026-11-20
 
 The current `main.c` is configured for the physical PAG7920LT camera
